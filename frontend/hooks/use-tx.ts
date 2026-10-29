@@ -3,18 +3,17 @@
 import * as React from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { TransactionStatus } from "genlayer-js/types";
 import type { Hash } from "genlayer-js/types";
 import { readClient, writeClient } from "@/lib/genlayer";
 import {
   ConsensusError,
   TxExecutionError,
-  TxTimeoutError,
   WalletNotConnectedError,
   toUiError,
   type UiError,
 } from "@/lib/errors";
 import { useWallet } from "@/hooks/use-wallet";
+import { statusNameOf, waitForFinalized } from "@/lib/tx-wait";
 
 export type TxPhase = "idle" | "signing" | "pending" | "success" | "error";
 
@@ -47,27 +46,6 @@ const CONSENSUS_RESULTS = new Set([
   "LEADER_TIMEOUT",
 ]);
 
-// `waitForTransactionReceipt` returns the SDK's simplified receipt, which
-// renames `statusName` to `status_name` and may leave only the numeric fields
-// behind on Studio. Decode every shape, or a canceled transaction would be
-// reported as a success because its status name looked empty.
-const STATUS_NAMES: Record<string, string> = {
-  "0": "UNINITIALIZED",
-  "1": "PENDING",
-  "2": "PROPOSING",
-  "3": "COMMITTING",
-  "4": "REVEALING",
-  "5": "ACCEPTED",
-  "6": "UNDETERMINED",
-  "7": "FINALIZED",
-  "8": "CANCELED",
-  "9": "APPEAL_REVEALING",
-  "10": "APPEAL_COMMITTING",
-  "11": "READY_TO_FINALIZE",
-  "12": "VALIDATORS_TIMEOUT",
-  "13": "LEADER_TIMEOUT",
-};
-
 const RESULT_NAMES: Record<string, string> = {
   "0": "IDLE",
   "1": "AGREE",
@@ -91,6 +69,8 @@ function named(value: unknown, table: Record<string, string>): string {
   return table[text] ?? text;
 }
 
+
+
 function findContractError(value: unknown, depth = 0): string | null {
   if (value == null || depth > 5) return null;
   if (typeof value === "string") {
@@ -106,7 +86,7 @@ function findContractError(value: unknown, depth = 0): string | null {
 }
 
 function assertReceipt(receipt: Receipt, hash: string): void {
-  const status = named(receipt.status_name ?? receipt.statusName ?? receipt.status, STATUS_NAMES);
+  const status = statusNameOf(receipt);
   const resultName = named(
     receipt.resultName ?? receipt.result_name ?? receipt.result,
     RESULT_NAMES,
@@ -184,7 +164,6 @@ export function useTx() {
 
   const finish = React.useCallback(
     async (receipt: Receipt, hash: string, options: RunOptions, startedAt: number) => {
-      await invalidate(options.invalidate);
       if (options.verify) {
         const ok = await options.verify();
         if (!ok) {
@@ -194,40 +173,46 @@ export function useTx() {
           );
         }
       }
+      // Success is reported from the receipt, never from a cache refresh. A slow
+      // or rate-limited read must not leave a finalized transaction looking
+      // like it is still processing.
       setState({ phase: "success", label: options.label, hash, startedAt });
       if (options.toastOnSuccess !== false) {
         toast.success(options.successTitle ?? "Transaction finalized", {
-          description:
-            options.successDescription ??
-            "Finalized on-chain, and the latest state has been reloaded.",
+          description: options.successDescription ?? "Finalized on-chain.",
         });
       }
       options.onSuccess?.(receipt);
+      void invalidate(options.invalidate).catch(() => {
+        toast.warning("Transaction confirmed, but the page is showing older data", {
+          description: "Reload the page in a moment to see the updated state.",
+        });
+      });
       return receipt;
     },
     [invalidate],
   );
 
   const waitFor = React.useCallback(
-    async (hash: string, options: RunOptions) =>
-      (await readClient.waitForTransactionReceipt({
-        hash: hash as Hash,
-        // ACCEPTED only means the leader proposed the transaction. Waiting for
-        // FINALIZED is what makes the success message true: consensus and
-        // execution are settled by then, and the state read back afterwards is
-        // the state the next block will see.
-        status: TransactionStatus.FINALIZED,
-        retries: options.waitRetries ?? 240,
-        interval: options.waitInterval ?? 3_000,
-      })) as unknown as Receipt,
+    async (hash: string, options: RunOptions): Promise<Receipt> => {
+      const interval = options.waitInterval ?? 4_000;
+      // `waitRetries` is kept as the caller-facing knob, but it now means "how
+      // many polls before giving up", not "how many polls the SDK may attempt
+      // before it aborts on a single failed request".
+      return waitForFinalized<Receipt>({
+        hash,
+        getTransaction: (value) =>
+          readClient.getTransaction({ hash: value as Hash }) as unknown as Promise<Receipt>,
+        intervalMs: interval,
+        timeoutMs: (options.waitRetries ?? 150) * interval,
+      });
+    },
     [],
   );
 
-  const explainFailure = React.useCallback((cause: unknown, hash?: string): UiError => {
-    if (cause instanceof ConsensusError || cause instanceof TxExecutionError) {
-      return toUiError(cause);
-    }
-    if (hash) return toUiError(new TxTimeoutError("Timed out waiting for finalization.", hash));
+  const explainFailure = React.useCallback((cause: unknown): UiError => {
+    // Report what actually failed. Turning every post-signature error into a
+    // timeout hid rate limits and dropped connections behind a wrong message.
     return toUiError(cause, "Transaction failed");
   }, []);
 
@@ -251,7 +236,7 @@ export function useTx() {
         assertReceipt(receipt, hash);
         return await finish(receipt, hash, options, startedAt);
       } catch (cause) {
-        const ui = explainFailure(cause, hash);
+        const ui = explainFailure(cause);
         setState({ phase: "error", label: options.label, hash, error: ui, startedAt });
         toast.error(ui.title, { description: ui.message });
         return null;

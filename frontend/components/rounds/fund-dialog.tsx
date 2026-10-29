@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TxFeedback } from "@/components/shared/tx-feedback";
 import { WalletButton } from "@/components/wallet/wallet-button";
+import { writeClient } from "@/lib/genlayer";
 import { useGenBalance } from "@/hooks/use-contract";
 import { queryKeys } from "@/hooks/use-contract";
 import { useTx } from "@/hooks/use-tx";
@@ -61,26 +62,23 @@ export function FundRoundDialog({
     onOpenChange(next);
   };
 
+  const fundOptions = (value: bigint) => ({
+    label: "Funding the round",
+    send: (client: ReturnType<typeof writeClient>) =>
+      client.writeContract({
+        address: CONTRACT_ADDRESS,
+        functionName: "fund_round",
+        args: [round.id],
+        value,
+      }),
+    invalidate: [queryKeys.stats, queryKeys.rounds, queryKeys.round(round.id)],
+    successTitle: "Funding recorded",
+    successDescription: `${formatGenUnit(value, 4)} went into the treasury of ${round.id}. Balances refresh in a moment.`,
+  });
+
   const handleFund = async () => {
     if (!canSubmit || tx.isBusy) return;
-    const value = parsed as bigint;
-    await tx.run({
-      label: "Funding the round",
-      send: (client) =>
-        client.writeContract({
-          address: CONTRACT_ADDRESS,
-          functionName: "fund_round",
-          args: [round.id],
-          value,
-        }),
-      invalidate: [
-        queryKeys.stats,
-        queryKeys.rounds,
-        queryKeys.round(round.id),
-      ],
-      successTitle: "Funding recorded",
-      successDescription: `${formatGenUnit(value, 4)} went into the treasury of ${round.id}. The round balance and total funded have been updated.`,
-    });
+    await tx.run(fundOptions(parsed as bigint));
   };
 
   const progress = percent(round.fundedAtto, round.budgetAtto);
@@ -191,6 +189,11 @@ export function FundRoundDialog({
             successTitle="Funding successful"
             successDescription={`${formatGenUnit(parsed ?? 0n, 4)} went into the treasury of ${round.id}.`}
             pendingHint="Waiting for the funding to confirm. This usually takes 15–60 seconds."
+            onResume={
+              tx.state.hash
+                ? () => void tx.resume(tx.state.hash as string, fundOptions(parsed ?? 0n))
+                : undefined
+            }
           />
         )}
 
