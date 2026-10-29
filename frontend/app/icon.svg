@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="aequa-tile" x1="3" y1="1" x2="29" y2="31" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e40af" />
+      <stop offset="0.45" stop-color="#2563eb" />
+      <stop offset="1" stop-color="#60a5fa" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#aequa-tile)" />
+  <rect x="0.3" y="0.3" width="31.4" height="31.4" rx="7.7" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="0.6" />
+  <path
+    d="M7.5 25.5 16 7l8.5 18.5"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M11.6 19.4h3.3M17.1 19.4h3.3"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.3"
+    stroke-linecap="round"
+  />
+</svg>

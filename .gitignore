@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.tmp
+.keys/
+write-out.txt
+artifacts/
+node_modules/
+.next/
+deployments/
+*.log
+frontend/.env.local

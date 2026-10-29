@@ -1,0 +1,43 @@
+{
+  "criteria": [
+    {
+      "id": "impact",
+      "weight": 30,
+      "question": "How much would this improve the experience of a developer new to GenLayer?"
+    },
+    {
+      "id": "feasibility",
+      "weight": 25,
+      "question": "Is the scope small enough to be delivered in a few weeks by a small team?"
+    },
+    {
+      "id": "team",
+      "weight": 20,
+      "question": "Does the proposal point to public work that shows the applicant can deliver?"
+    },
+    {
+      "id": "budget",
+      "weight": 15,
+      "question": "Is the requested amount proportionate to the described deliverables?"
+    },
+    {
+      "id": "alignment",
+      "weight": 10,
+      "question": "Does the project support open-source collaboration?"
+    }
+  ],
+  "gates": [
+    {
+      "id": "public_evidence",
+      "question": "Does the proposal list at least one publicly reachable https URL as evidence?"
+    },
+    {
+      "id": "original_work",
+      "question": "Does the proposal describe new work by the applicant instead of copying the evidence word for word?"
+    },
+    {
+      "id": "scope_match",
+      "question": "Is the project about developer tooling or documentation for the GenLayer ecosystem?"
+    }
+  ]
+}

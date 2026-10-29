@@ -1,0 +1,18 @@
+networks:
+  default: studionet
+
+  localnet:
+    url: "http://127.0.0.1:4000/api"
+
+  studionet:
+    accounts:
+      - "${ACCOUNT_PRIVATE_KEY}"
+      - "${APPLICANT_PRIVATE_KEY}"
+      - "${OUTSIDER_PRIVATE_KEY}"
+    default_wait_interval: 3000
+    default_wait_retries: 100
+
+paths:
+  contracts: "contracts"
+
+environment: .env

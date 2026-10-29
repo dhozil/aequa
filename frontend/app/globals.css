@@ -1,0 +1,275 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-instrument);
+  --font-heading: var(--font-instrument);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-forest: var(--forest);
+  --color-brass: var(--brass);
+  --color-line: var(--line);
+  --color-moss: var(--moss);
+  --color-rust: var(--rust);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Palette hero-financial: light blue finance, blue-500 accent, soft slate text */
+  --paper: #f7f9fc;
+  --ink: #1e293b;
+  --forest: #3b82f6;
+  --brass: #f59e0b;
+  --line: #e2e8f0;
+  --moss: #16a34a;
+  --rust: #dc2626;
+
+  --background: #f7f9fc;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #eff6ff;
+  --accent-foreground: #1e293b;
+  --destructive: #dc2626;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --ring: #3b82f6;
+  --chart-1: #3b82f6;
+  --chart-2: #f59e0b;
+  --chart-3: #16a34a;
+  --chart-4: #dc2626;
+  --chart-5: #64748b;
+  --radius: 0.4rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eff6ff;
+  --sidebar-accent-foreground: #1e293b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #3b82f6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--ink) 5%, transparent) 0.5px,
+      transparent 0.5px
+    );
+    background-size: 24px 24px;
+    font-feature-settings: "ss01", "cv02", "cv03";
+  }
+
+  ::selection {
+    background: var(--forest);
+    color: var(--paper);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-serif font-normal tracking-tight;
+  }
+}
+
+@layer components {
+  .label {
+    @apply font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground;
+  }
+
+  .paper-card {
+    @apply rounded-lg border border-border bg-card;
+    box-shadow:
+      0 1px 0 0 color-mix(in oklab, #ffffff 65%, transparent) inset,
+      0 20px 45px -35px color-mix(in oklab, var(--ink) 55%, transparent);
+  }
+
+  .rule {
+    @apply h-px w-full bg-border;
+  }
+
+  /* Single page container. Every route uses the same gutter and max width as
+     the landing hero (1280px), so moving between pages never shifts the
+     header, the logo, or the content column. */
+  .shell {
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  @media (min-width: 1024px) {
+    .shell {
+      padding-inline: 2rem;
+    }
+  }
+
+  .grain {
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--ink) 7%, transparent) 0.5px,
+      transparent 0.5px
+    );
+    background-size: 18px 18px;
+  }
+
+  .display {
+    font-family: var(--font-instrument), Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 0.98;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* HeroFinancial timeline (TimelineAnimation): entrance stagger keyed off
+     animationNum. Hiding is gated behind [data-timeline] on the item itself,
+     which TimelineAnimation sets imperatively, so markup stays visible for
+     crawlers and no-JS users. */
+  .tl-item[data-timeline] {
+    transition:
+      opacity 800ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 800ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+
+    .tl-item[data-timeline]:not([data-visible="true"]) {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  .tl-item[data-timeline][data-anim="1"]:not([data-visible="true"]) {
+    transform: translateY(-14px) scale(0.97);
+  }
+
+  .tl-item[data-timeline][data-anim="3"]:not([data-visible="true"]) {
+    transform: translateY(34px) scale(0.96);
+  }
+
+  .tl-item[data-timeline][data-anim="5"]:not([data-visible="true"]) {
+    transform: translateY(40px) scale(0.96);
+  }
+
+  .tl-item[data-timeline][data-anim="6"]:not([data-visible="true"]) {
+    transform: translateY(28px) scale(0.965);
+  }
+
+  .tl-item[data-timeline][data-anim="7"]:not([data-visible="true"]) {
+    transform: translateY(48px) scale(0.965);
+  }
+
+  .tl-item[data-timeline][data-anim="8"]:not([data-visible="true"]) {
+    transform: translateY(34px) scale(0.96);
+  }
+
+  .tl-item[data-timeline][data-anim="2"] {
+    transition-delay: 70ms;
+  }
+
+  .tl-item[data-timeline][data-anim="3"] {
+    transition-delay: 140ms;
+  }
+
+  .tl-item[data-timeline][data-anim="4"] {
+    transition-delay: 210ms;
+  }
+
+  .tl-item[data-timeline][data-anim="5"] {
+    transition-delay: 280ms;
+  }
+
+  .tl-item[data-timeline][data-anim="6"] {
+    transition-delay: 350ms;
+  }
+
+  .tl-item[data-timeline][data-anim="7"] {
+    transition-delay: 420ms;
+  }
+
+  .tl-item[data-timeline][data-anim="8"] {
+    transition-delay: 490ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tl-item[data-timeline],
+    .tl-item[data-timeline]:not([data-visible="true"]) {
+      opacity: 1;
+      transform: none;
+      transition: none;
+      transition-delay: 0ms;
+    }
+  }
+
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+}
