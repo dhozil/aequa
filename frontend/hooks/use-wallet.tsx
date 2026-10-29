@@ -3,18 +3,32 @@
 import * as React from "react";
 import { CHAIN_ID, CHAIN_ID_HEX, WALLET_CHAIN_PARAMS } from "@/lib/config";
 import { toUiError, type UiError } from "@/lib/errors";
+import { useWalletDiscovery } from "@/hooks/use-wallet-discovery";
+import {
+  readStoredWalletId,
+  storeWalletId,
+  type Eip1193Provider,
+  type WalletOption,
+} from "@/lib/wallets";
 
 type WalletStatus = "idle" | "connecting";
 
 type WalletContextValue = {
   address: string | null;
   chainId: number | null;
+  /** Provider of the wallet the visitor picked; never a shared global. */
+  provider: Eip1193Provider | null;
+  /** Every EVM wallet this browser exposes, for the picker. */
+  wallets: WalletOption[];
+  /** Name of the selected wallet, e.g. "MetaMask" or "Rabby". */
+  walletName: string | null;
   hasProvider: boolean;
   ready: boolean;
   status: WalletStatus;
   error: UiError | null;
   isWrongNetwork: boolean;
-  connect: () => Promise<boolean>;
+  /** Opens the chosen wallet's approval prompt. Pass an id to switch wallets. */
+  connect: (walletId?: string) => Promise<boolean>;
   disconnect: () => void;
   switchNetwork: () => Promise<boolean>;
   ensureStudioNet: () => Promise<void>;
@@ -32,103 +46,156 @@ function parseChainId(value: unknown): number | null {
   return null;
 }
 
+function firstAccount(value: unknown): string | null {
+  const list = Array.isArray(value) ? (value as unknown[]) : [];
+  const first = list[0];
+  return typeof first === "string" && first ? first : null;
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const { wallets, settled: discoverySettled } = useWalletDiscovery();
+  // The last wallet this origin used; read during hydration so a returning
+  // visitor only has to approve, not choose again.
+  const [selectedId, setSelectedId] = React.useState<string | null>(() => readStoredWalletId());
   const [address, setAddress] = React.useState<string | null>(null);
   const [chainId, setChainId] = React.useState<number | null>(null);
-  const [hasProvider, setHasProvider] = React.useState(false);
-  const [ready, setReady] = React.useState(false);
+  const [hydrated, setHydrated] = React.useState(false);
   const [status, setStatus] = React.useState<WalletStatus>("idle");
   const [error, setError] = React.useState<UiError | null>(null);
 
+  const selected = React.useMemo<WalletOption | null>(() => {
+    if (wallets.length === 0) return null;
+    if (selectedId) {
+      const match = wallets.find((wallet) => wallet.id === selectedId);
+      if (match) return match;
+    }
+    return null;
+  }, [wallets, selectedId]);
+  const provider = selected?.provider ?? null;
+
+  // Switching wallets drops the previous session during render, before any
+  // transaction could read a stale address from the old wallet.
+  const [trackedProvider, setTrackedProvider] = React.useState<Eip1193Provider | null>(null);
+  if (trackedProvider !== provider) {
+    setTrackedProvider(provider);
+    setAddress(null);
+    setChainId(null);
+    setError(null);
+    setHydrated(provider === null);
+  }
+
+  // Ready once discovery settled and, if a wallet is selected, its account
+  // state has been read. Without a selected wallet there is nothing to read.
+  const ready = discoverySettled && (provider === null || hydrated);
+
   React.useEffect(() => {
+    if (!provider) return;
     let cancelled = false;
-    const provider = typeof window !== "undefined" ? window.ethereum : undefined;
 
-    const hydrate = async () => {
-      if (!provider) {
-        setReady(true);
-        return;
-      }
-      setHasProvider(true);
-
+    void (async () => {
       try {
         const [accounts, currentChain] = await Promise.all([
           provider.request({ method: "eth_accounts" }),
           provider.request({ method: "eth_chainId" }),
         ]);
         if (cancelled) return;
-        const list = Array.isArray(accounts) ? (accounts as string[]) : [];
-        setAddress(list[0] ?? null);
+        setAddress(firstAccount(accounts));
         setChainId(parseChainId(currentChain));
       } catch {
-        // A locked wallet must not break the page; the user can connect manually.
+        // A locked or busy wallet must not break the page.
+        if (!cancelled) setAddress(null);
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setHydrated(true);
       }
-    };
+    })();
 
-    const timer = window.setTimeout(() => {
-      void hydrate();
-    }, 0);
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+
+  React.useEffect(() => {
+    if (!provider) return;
 
     const onAccounts = (...args: never[]) => {
-      const accounts = args[0] as unknown;
-      const list = Array.isArray(accounts) ? (accounts as string[]) : [];
-      setAddress(list[0] ?? null);
+      setAddress(firstAccount(args[0]));
       setError(null);
     };
     const onChain = (...args: never[]) => {
       setChainId(parseChainId(args[0]));
     };
 
-    provider?.on?.("accountsChanged", onAccounts);
-    provider?.on?.("chainChanged", onChain);
+    provider.on?.("accountsChanged", onAccounts);
+    provider.on?.("chainChanged", onChain);
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      provider?.removeListener?.("accountsChanged", onAccounts);
-      provider?.removeListener?.("chainChanged", onChain);
+      provider.removeListener?.("accountsChanged", onAccounts);
+      provider.removeListener?.("chainChanged", onChain);
     };
-  }, []);
+  }, [provider]);
 
-  const connect = React.useCallback(async () => {
-    const provider = typeof window !== "undefined" ? window.ethereum : undefined;
-    if (!provider) {
-      setError({
-        kind: "wallet",
-        title: "Wallet not available",
-        message: "Install an EVM wallet such as MetaMask to send transactions.",
-        hint: "Once installed, reload this page.",
-        retryable: false,
-      });
-      return false;
-    }
-    setStatus("connecting");
-    setError(null);
-    try {
-      const accounts = await provider.request({ method: "eth_requestAccounts" });
-      const list = Array.isArray(accounts) ? (accounts as string[]) : [];
-      if (!list[0]) throw new Error("The wallet did not return an address.");
-      setAddress(list[0]);
-      const currentChain = await provider.request({ method: "eth_chainId" });
-      setChainId(parseChainId(currentChain));
-      return true;
-    } catch (cause) {
-      setError(toUiError(cause, "Failed to connect wallet"));
-      return false;
-    } finally {
-      setStatus("idle");
-    }
-  }, []);
+  const connect = React.useCallback(
+    async (walletId?: string) => {
+      const target = walletId
+        ? (wallets.find((wallet) => wallet.id === walletId) ?? null)
+        : selected;
+
+      if (!target) {
+        setError({
+          kind: "wallet",
+          title: "No EVM wallet found",
+          message:
+            "This browser does not expose an EVM wallet. Install MetaMask, Rabby, or another EIP-1193 wallet to sign transactions.",
+          hint: "Once installed, reload this page and pick the wallet.",
+          retryable: false,
+        });
+        return false;
+      }
+
+      const switching = target.id !== selectedId;
+      if (switching) {
+        // Never let a stale session sign with the previous wallet.
+        setAddress(null);
+        setChainId(null);
+      }
+      setSelectedId(target.id);
+      storeWalletId(target.id);
+      setStatus("connecting");
+      setError(null);
+
+      try {
+        const accounts = await target.provider.request({ method: "eth_requestAccounts" });
+        const account = firstAccount(accounts);
+        if (!account) throw new Error("The wallet did not return an address.");
+        setAddress(account);
+        const currentChain = await target.provider.request({ method: "eth_chainId" });
+        setChainId(parseChainId(currentChain));
+        return true;
+      } catch (cause) {
+        setError(toUiError(cause, "Failed to connect wallet"));
+        return false;
+      } finally {
+        setStatus("idle");
+      }
+    },
+    [wallets, selected, selectedId],
+  );
 
   const disconnect = React.useCallback(() => {
+    // The extension keeps its own authorisation; this only ends the app session.
     setAddress(null);
     setError(null);
   }, []);
 
   const switchNetwork = React.useCallback(async () => {
-    const provider = typeof window !== "undefined" ? window.ethereum : undefined;
-    if (!provider) return false;
+    if (!provider) {
+      setError({
+        kind: "wallet",
+        title: "Connect a wallet first",
+        message: "Choose a wallet before switching networks.",
+        retryable: false,
+      });
+      return false;
+    }
     setError(null);
     try {
       await provider.request({
@@ -163,7 +230,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } catch {
       return false;
     }
-  }, []);
+  }, [provider]);
 
   const ensureStudioNet = React.useCallback(async () => {
     if (chainId === CHAIN_ID) return;
@@ -179,7 +246,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     () => ({
       address,
       chainId,
-      hasProvider,
+      provider,
+      wallets,
+      walletName: selected?.name ?? null,
+      hasProvider: wallets.length > 0,
       ready,
       status,
       error,
@@ -193,7 +263,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [
       address,
       chainId,
-      hasProvider,
+      provider,
+      wallets,
+      selected,
       ready,
       status,
       error,

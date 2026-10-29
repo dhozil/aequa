@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TxFeedback } from "@/components/shared/tx-feedback";
+import { ConnectWalletButton } from "@/components/wallet/wallet-picker";
 import { fetchRefund, queryKeys, useRefundQuote } from "@/hooks/use-contract";
 import { useTx } from "@/hooks/use-tx";
 import { useWallet } from "@/hooks/use-wallet";
@@ -61,7 +62,7 @@ function friendlyBlockedReason(reason: string): string {
  * `recover_refund` is the manual fallback after the grace period.
  */
 export function RefundClaim({ round }: { round: Round }) {
-  const { address, connect } = useWallet();
+  const { address } = useWallet();
   const quote = useRefundQuote(round.id, address);
   const tx = useTx();
   const [action, setAction] = React.useState<Action | null>(null);
@@ -90,9 +91,7 @@ export function RefundClaim({ round }: { round: Round }) {
             round can claim it back, pro rata — the owner cannot withdraw it.
           </span>
         </p>
-        <Button size="sm" variant="outline" onClick={() => void connect()}>
-          Connect wallet
-        </Button>
+        <ConnectWalletButton size="sm" variant="outline" />
       </div>
     );
   }

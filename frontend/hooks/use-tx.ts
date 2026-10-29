@@ -164,7 +164,7 @@ export type RunOptions = {
 };
 
 export function useTx() {
-  const { address, ensureStudioNet } = useWallet();
+  const { address, provider, ensureStudioNet } = useWallet();
   const queryClient = useQueryClient();
   const [state, setState] = React.useState<TxState>({ phase: "idle" });
   const inFlight = React.useRef(false);
@@ -241,8 +241,9 @@ export function useTx() {
       let hash: string | undefined;
       try {
         if (!address) throw new WalletNotConnectedError();
+        if (!provider) throw new WalletNotConnectedError();
         await ensureStudioNet();
-        const client = writeClient(address);
+        const client = writeClient(address, provider);
         hash = await options.send(client);
         if (!hash) throw new Error("The wallet did not return a transaction hash.");
         setState({ phase: "pending", label: options.label, hash, startedAt });
@@ -258,7 +259,7 @@ export function useTx() {
         inFlight.current = false;
       }
     },
-    [address, ensureStudioNet, explainFailure, finish, waitFor],
+    [address, provider, ensureStudioNet, explainFailure, finish, waitFor],
   );
 
   const resume = React.useCallback(

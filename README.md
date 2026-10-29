@@ -279,8 +279,9 @@ works), `/rubric` (rubric and gates), `/consensus` (validator consensus model), 
 
 Operational notes:
 
-- All data is read straight from the contract; there is no backend. The wallet uses
-  `window.ethereum` and transactions are written through `genlayer-js`.
+- All data is read straight from the contract; there is no backend. Wallets are discovered with
+  EIP-6963 (MetaMask, Rabby, …) and the visitor picks one, so no extension overwrites another's
+  `window.ethereum`; transactions are written through that selected provider via `genlayer-js`.
 - Studionet limits **500 `gen_call` per hour**. Auto-refresh is deliberately kept at 60 seconds
   (20 seconds for proposals still `submitted`), inactive tabs stop polling, and transport failures
   are retried only once. Because 429 responses carry no CORS headers, the browser shows them as

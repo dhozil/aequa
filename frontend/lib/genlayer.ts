@@ -1,6 +1,7 @@
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 import { CONTRACT_ADDRESS, RPC_URL } from "./config";
+import type { Eip1193Provider } from "./wallets";
 
 /**
  * Read-only client. No wallet required, so every page can render state even
@@ -9,18 +10,19 @@ import { CONTRACT_ADDRESS, RPC_URL } from "./config";
 export const readClient = createClient({ chain: studionet, endpoint: RPC_URL });
 
 /**
- * Write client. The injected wallet signs; the SDK routes the transaction
- * through the provider, so no private key ever touches the browser bundle.
+ * Write client. The wallet the visitor selected signs; the SDK routes the
+ * transaction through that exact provider, so no private key ever touches the
+ * browser bundle and two installed wallets cannot sign for each other.
  */
-export function writeClient(address: string) {
-  if (typeof window === "undefined" || !window.ethereum) {
-    throw new Error("MetaMask is not installed.");
+export function writeClient(address: string, provider: Eip1193Provider | null) {
+  if (!provider) {
+    throw new Error("Connect a wallet before sending a transaction.");
   }
   return createClient({
     chain: studionet,
     endpoint: RPC_URL,
     account: address as `0x${string}`,
-    provider: window.ethereum,
+    provider: provider as never,
   });
 }
 

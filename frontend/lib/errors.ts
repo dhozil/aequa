@@ -347,13 +347,14 @@ export function toUiError(error: unknown, fallbackTitle = "Something went wrong"
   if (
     lowered.includes("metamask is not installed") ||
     lowered.includes("no provider") ||
+    lowered.includes("connect a wallet") ||
     lowered.includes("window.ethereum is undefined")
   ) {
     return {
       kind: "wallet",
       title: "Wallet not available",
       message: "This browser does not detect a wallet that can sign transactions.",
-      hint: "Install MetaMask (or another EVM-compatible wallet) and reload the page.",
+      hint: "Pick an EVM wallet (MetaMask, Rabby, …) from the connect button, then try again.",
       retryable: false,
       raw,
     };
