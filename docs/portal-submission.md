@@ -60,12 +60,16 @@ Press Evaluate on a proposal: within one to three minutes it shows criterion sco
 ## 06 · Contract link
 
 ```
-https://explorer-studio.genlayer.com/address/0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e
+https://explorer-studio.genlayer.com/address/0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9
 ```
 
-Deployed on 30 October 2026 from the contract source now at `main` (`107b586`), tx
-`0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb`. Demo state at deploy:
-round `r0001` open with 5 GEN funded, budget 5 GEN, cap 2 GEN, threshold 0.
+Deployed on 30 October 2026 from `contracts/aequa_grants.py` in this repository (verified by
+diffing `data.contract_code` of the deploy tx against the file), tx
+`0xdd5b0cadcf2f6372acd2033ea3f6ae0f3e17dbee06db3d48e4700c0b4f24e611`.
+
+Demo state seeded with `scripts/seed_demo.py`: `r0001` open and funded 5 GEN with two evaluated
+proposals (approved 70, rejected 26), `r0002` open but unfunded (0 of 1 GEN), `r0003` closed with
+2 GEN funded and one evaluated proposal. Balance 7 GEN, no transfers in flight.
 
 The contract is deployed on **StudioNet** (chain 61999), so the link points at the Studio
 explorer. The form's placeholder shows `scan.bradbury.genlayer.com`; if the stewards require a

@@ -1,0 +1,77 @@
+{
+  "contract": "0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9",
+  "steps": {
+    "close r0003": {
+      "error": "",
+      "method": "close_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0xdc845179dde57ccf246267d66bca09b53aa9c3cfbc5a291c01074f2237e418cd"
+    },
+    "create r0001": {
+      "error": "",
+      "method": "create_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x01d5d08694345fa4e4fcf3ed2642a61f8907a467868c31ba32ae57bbca3ef18c"
+    },
+    "create r0002": {
+      "error": "",
+      "method": "create_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0xb4e8e61beb675f69337727cc64fd0c3e3082be8b08eec6cc233adb3f41710bd9"
+    },
+    "create r0003": {
+      "error": "",
+      "method": "create_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0xdfdeb6f5392bc207576ef3425dc1de25199eaaa6d2d98f34223ef42d29201b88"
+    },
+    "evaluate p1": {
+      "error": "",
+      "method": "evaluate_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x82fdc9eb7ed92e5f6a66cdf20d33a4405a4e1c73b8a3941969151154c6467276"
+    },
+    "evaluate p2": {
+      "error": "",
+      "method": "evaluate_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x5b3d0fe1f3b93a7a7841275eb456f0d62416ba4054e27a24ef5956382b267a65"
+    },
+    "evaluate p3": {
+      "error": "",
+      "method": "evaluate_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x094aee3ca87bae86c10ad860ee3458e92cfec78af82a391ba8ac2777b1828ef1"
+    },
+    "fund r0001": {
+      "error": "",
+      "method": "fund_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x9fd846959d449eac775bd5da2ac84c98f2c2710432580d82eb26a4d97246b4d7"
+    },
+    "fund r0003": {
+      "error": "",
+      "method": "fund_round",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x803c9651c7ec6cec6a2d0fa9f6cd97d845a30bff7ec00f42df91c41a8c96b383"
+    },
+    "submit r0001 applicant": {
+      "error": "",
+      "method": "submit_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0xe61b54393f1ecc04a652718552d7396f2abe404ceedc063ac3c9d7c8ab464a30"
+    },
+    "submit r0001 owner": {
+      "error": "",
+      "method": "submit_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x435bddb1b095b2530afa6a9994c212d335f5611de2cc6270d7d7cf16abd70425"
+    },
+    "submit r0003 owner": {
+      "error": "",
+      "method": "submit_proposal",
+      "result": "MAJORITY_AGREE",
+      "tx": "0x3ba33b8ded35c07d09773f3a81f982498704fbf0121532833b07a1d5de274d8f"
+    }
+  }
+}

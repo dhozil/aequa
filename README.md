@@ -15,16 +15,23 @@ links): [`information_needed.md`](information_needed.md).
 | Item | Value |
 | --- | --- |
 | Network | Studionet (`https://studio.genlayer.com/api`, chain id `61999`) |
-| Contract | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
-| Deploy tx | `0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb` |
+| Contract | `0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9` |
+| Deploy tx | `0xdd5b0cadcf2f6372acd2033ea3f6ae0f3e17dbee06db3d48e4700c0b4f24e611` |
 | Owner | `0x3958A649b41cd7C8561F4233cC0F5b0469Bc98E0` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` (pinned) |
 
-This deployment is fresh: one open round, funded by the owner, so the demo path works without any
-setup.
+The deployment ships with demo data so every lifecycle state is visible at once: one round that is
+open and funded, one that is open and still collecting funds, and one that is closed.
 
-- `r0001` — "Community tooling round", funded 5 GEN, budget 5 GEN, cap 2 GEN per proposal,
-  `min_score 0`, deadline 14 days after creation. No proposals yet.
+- `r0001` — "Community tooling round", open, funded 5 GEN, budget 5 GEN, cap 2 GEN per proposal,
+  `min_score 0`, deadline 14 days after creation. Two proposals, both evaluated: one approved
+  (score 70), one rejected (score 26).
+- `r0002` — "Public goods micro-grants", open but **unfunded** (0 of 1 GEN, cap 0.5 GEN), so the
+  funding flow is the visible next step. No proposals yet.
+- `r0003` — "Builder sprint round", **closed**, funded 2 GEN, one evaluated proposal (rejected,
+  score 37).
+
+The seed is reproducible: `python scripts/seed_demo.py` (state in `docs/seed-state.json`).
 
 The previous deployment (`0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6`) is the one whose state proved
 that a failed child transfer returns its value without the hook ever firing: it held 3 GEN more than
@@ -289,7 +296,7 @@ gltest tests/integration/test_aequa_full_surface.py -v -s --network studionet
 cd frontend && node scripts/contract-smoke.mjs
 
 # end-to-end against an already deployed contract (no new deploy)
-$env:AEQUA_GRANTS_ADDRESS="0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e"
+$env:AEQUA_GRANTS_ADDRESS="0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9"
 gltest tests/integration -v -s --network studionet
 ```
 
@@ -318,7 +325,7 @@ Set these environment variables for Production (and Preview) before the first bu
 
 | Variable | Example |
 | --- | --- |
-| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
+| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9` |
 | `NEXT_PUBLIC_RPC_URL` | `https://studio.genlayer.com/api` |
 | `NEXT_PUBLIC_EXPLORER_URL` | `https://genlayer-explorer.vercel.app` |
 
@@ -359,7 +366,7 @@ PowerShell, so write to the contract through the Python helper:
 
 ```bash
 # inspect all state
-python scripts/aequa.py --contract 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e list
+python scripts/aequa.py --contract 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 list
 
 # create a round (owner)
 python scripts/aequa.py --contract 0x... create-round \
@@ -401,7 +408,7 @@ python scripts/aequa.py --contract 0x... --key-env ACCOUNT_PRIVATE_KEY claim-ref
 You can also read state without the helper:
 
 ```bash
-genlayer call 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e list_rounds
+genlayer call 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 list_rounds
 ```
 
 ## Contract API

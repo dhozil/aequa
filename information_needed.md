@@ -7,7 +7,7 @@ is tested, and where to verify it on-chain.
 | --- | --- |
 | Project | Aequa Grants — AI-adjudicated grant rounds |
 | Network | GenLayer StudioNet (`https://studio.genlayer.com/api`, chain id `61999`) |
-| Contract under review | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
+| Contract under review | `0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9` |
 | Repository | https://github.com/dhozil/aequa |
 | Source | [`contracts/aequa_grants.py`](contracts/aequa_grants.py) on `main` (`107b586`) — the file the deployed bytecode was built from |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` (pinned) |
@@ -210,16 +210,22 @@ version; the main deployment below includes the fix.
 
 | Step | Hash | Result | Explorer |
 | --- | --- | --- | --- |
-| Deploy | `0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb` | `MAJORITY_AGREE` | https://explorer-studio.genlayer.com/tx/0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb |
-| `create_round` (`r0001`) | `0x2c9bf00e8c983f39f07f3746bf2e8b57fb879dc0bf9be9ad881de786da188bb2` | returned `"r0001"` | https://explorer-studio.genlayer.com/tx/0x2c9bf00e8c983f39f07f3746bf2e8b57fb879dc0bf9be9ad881de786da188bb2 |
-| `fund_round` (5 GEN) | `0xb859b4e27bc31bbd4c747fde4d848418fc341b3f56dd5246ee14b206c3f9c942` | `value 5e18` | https://explorer-studio.genlayer.com/tx/0xb859b4e27bc31bbd4c747fde4d848418fc341b3f56dd5246ee14b206c3f9c942 |
+| Deploy | `0xdd5b0cadcf2f6372acd2033ea3f6ae0f3e17dbee06db3d48e4700c0b4f24e611` | `MAJORITY_AGREE` | https://explorer-studio.genlayer.com/tx/0xdd5b0cadcf2f6372acd2033ea3f6ae0f3e17dbee06db3d48e4700c0b4f24e611 |
+| `create_round` (`r0001`) | `0x01d5d08694345fa4e4fcf3ed2642a61f8907a467868c31ba32ae57bbca3ef18c` | returned `"r0001"` | https://explorer-studio.genlayer.com/tx/0x01d5d08694345fa4e4fcf3ed2642a61f8907a467868c31ba32ae57bbca3ef18c |
+| `fund_round` (5 GEN) | `0x9fd846959d449eac775bd5da2ac84c98f2c2710432580d82eb26a4d97246b4d7` | `value 5e18` | https://explorer-studio.genlayer.com/tx/0x9fd846959d449eac775bd5da2ac84c98f2c2710432580d82eb26a4d97246b4d7 |
 
 Contract page:
-https://explorer-studio.genlayer.com/address/0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e
+https://explorer-studio.genlayer.com/address/0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9
 
 All three transactions are `FINALIZED`. The deploy receipt reports `MAJORITY_AGREE` and the
 contract address above; `create_round` returned `"r0001"`; the `fund_round` receipt carries
 `value: 5000000000000000000n`.
+
+Demo state was seeded on top of it by `scripts/seed_demo.py` (hashes in
+[`docs/seed-state.json`](docs/seed-state.json)) so the frontend shows several lifecycle states at
+once: `r0001` open and funded with two evaluated proposals (approved 70 / rejected 26), `r0002`
+open but unfunded, `r0003` closed with one evaluated proposal. Balance `7 GEN`,
+`returned_surplus_atto = 0`.
 
 Previous deployment (evidence for section 3):
 https://explorer-studio.genlayer.com/address/0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6
@@ -229,14 +235,14 @@ https://explorer-studio.genlayer.com/address/0x2489Af08c51C8346F4362d3D1e4C6c63a
 Read the current state (no wallet, no transaction):
 
 ```bash
-genlayer call 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e get_stats
-genlayer call 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e get_round --args r0001
-genlayer schema 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e | grep -E "reconcile_|confirm_payout"
+genlayer call 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 get_stats
+genlayer call 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 get_round --args r0001
+genlayer schema 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 | grep -E "reconcile_|confirm_payout"
 ```
 
-`get_stats` on the fresh deployment reports `total_received_atto = 5000000000000000000`,
-`balance_atto = 5000000000000000000`, `returned_surplus_atto = "0"` — the invariant holds with a
-funded, open round and no transfers in flight.
+`get_stats` on the fresh deployment reports `total_received_atto = 7000000000000000000`,
+`balance_atto = 7000000000000000000`, `returned_surplus_atto = "0"` — the invariant holds with two
+funded rounds and no transfers in flight.
 
 ### Confirm the deployed source *is* the corrected source
 
@@ -248,7 +254,7 @@ answers "is the live contract the fixed one" without trusting a timestamp:
 python - <<'PY'
 import base64, pathlib, requests
 rpc = "https://studio.genlayer.com/api"
-h = "0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb"
+h = "0xdd5b0cadcf2f6372acd2033ea3f6ae0f3e17dbee06db3d48e4700c0b4f24e611"
 tx = requests.post(rpc, json={"jsonrpc": "2.0", "id": 1, "method": "eth_getTransactionByHash",
                               "params": [h]}, timeout=30).json()["result"]
 live = base64.b64decode(tx["data"]["contract_code"]).replace(b"\r\n", b"\n")
@@ -262,8 +268,9 @@ PY
 
 Result against the deployment in section 6: `identical: True`, `applicant check: True`,
 `funder check: True`, `overlap guard: True` (78 443 bytes, same as the repository file apart from
-line endings). The deploy block is `2026-10-30T03:00:59Z`, later than every commit touching the
-contract, and the working tree at `8c20a20` is clean.
+line endings). The deploy transaction is stamped `2026-10-30T03:24:26Z`, later than every commit
+touching the contract, and the working tree is clean — the source above and the source on chain are
+the same file.
 
 To exercise the bounce path itself, the contract needs a child transfer that fails. That cannot be
 forced from the outside, so the reversal path is covered by the direct-mode tests above rather than
@@ -271,11 +278,11 @@ by a live transaction. Once a transfer does fail, the sequence is:
 
 ```bash
 # after a payout was settled and its value came back
-python scripts/aequa.py --contract 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e \
+python scripts/aequa.py --contract 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 \
   --key-env APPLICANT_PRIVATE_KEY reconcile-payout --proposal-id p00000001
 
 # after a refund was settled and its value came back
-python scripts/aequa.py --contract 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e \
+python scripts/aequa.py --contract 0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9 \
   --key-env ACCOUNT_PRIVATE_KEY reconcile-refund --round-id r0001
 ```
 
@@ -299,7 +306,7 @@ that actually happened cannot be reversed, and a third party cannot force a reve
   direct-mode tests, not by a transaction. The deploy, the seeded round, the payout/refund overlap
   rejection and the forged-surplus rejection are verified on-chain.
 - **Frontend environment.** The Vercel project must set
-  `NEXT_PUBLIC_AEQUA_ADDRESS=0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` and redeploy. The local
+  `NEXT_PUBLIC_AEQUA_ADDRESS=0xA6CA84E9911aadCa7d05d30B810AD5f3726633f9` and redeploy. The local
   `frontend/.env.local` is already updated.
 
 ## 9. File map
