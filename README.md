@@ -12,22 +12,21 @@ Category: **AI Governance**. Status: contract, tests, and frontend are complete.
 | Item | Value |
 | --- | --- |
 | Network | Studionet (`https://studio.genlayer.com/api`, chain id `61999`) |
-| Contract | `0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6` |
-| Deploy tx | `0x4ffbce8a8344300f837d57a5c668f6bcc6e8790fa3f1276686aaae0b65f01853` |
+| Contract | `0x7079fE0a3321442818705E85f45C04210eBE7832` |
+| Deploy tx | `0x7cc0c98d69ffff8ad700a179353165e473fb4550a0ee8a5328ccca6737517385` |
 | Owner | `0x3958A649b41cd7C8561F4233cC0F5b0469Bc98E0` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` (pinned) |
 
-This deployment comes from the compact integration run (`tests/integration/test_aequa_compact.py`),
-which walks every method once in about twenty transactions instead of fifty:
+This deployment is fresh: one open round, funded by the owner, so the demo path works without any
+setup.
 
-- `r0001` — "Compact verification round" from an earlier attempt on this contract; funded 2 GEN,
-  still open (its proposal was rejected by a `scope_match` gate).
-- `r0002` — "Compact verification round", the passing run. Funded 2 GEN, proposal `p00000002`
-  **approved** (55/100, threshold 0) and **paid 1 GEN** through `payout_pending` → `confirm_payout`.
-  Closed afterwards; the owner claimed the 1 GEN that was never allocated. On StudioNet that child
-  transfer stayed unresolved, so `confirm_refund` correctly refused to move the ledger: `claimed_atto`
-  and `total_refunded_atto` are still 0 and the claim remains pending for `recover_refund` after the
-  one-hour grace period.
+- `r0001` — "Community tooling round", funded 5 GEN, budget 5 GEN, cap 2 GEN per proposal,
+  `min_score 0`, deadline 14 days after creation. No proposals yet.
+
+The previous deployment (`0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6`) is the one whose state proved
+that a failed child transfer returns its value without the hook ever firing: it held 3 GEN more than
+its ledger accounted for while `bounced_refunds` was still 0. That is what `reconcile_payout` and
+`reconcile_refund` now detect.
 
 The historical first deployment (`0x28f860B6bCAC299Ee470C35060732C91cbe985c3`) is the one that
 exposed the refund problem: two refund child transfers ended `NO_MAJORITY` while the ledger had
@@ -312,7 +311,7 @@ Set these environment variables for Production (and Preview) before the first bu
 
 | Variable | Example |
 | --- | --- |
-| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6` |
+| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0x7079fE0a3321442818705E85f45C04210eBE7832` |
 | `NEXT_PUBLIC_RPC_URL` | `https://studio.genlayer.com/api` |
 | `NEXT_PUBLIC_EXPLORER_URL` | `https://genlayer-explorer.vercel.app` |
 
@@ -395,12 +394,12 @@ python scripts/aequa.py --contract 0x... --key-env ACCOUNT_PRIVATE_KEY claim-ref
 You can also read state without the helper:
 
 ```bash
-genlayer call 0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6 list_rounds
+genlayer call 0x7079fE0a3321442818705E85f45C04210eBE7832 list_rounds
 ```
 
 ## Contract API
 
-**Write (13, one payable)**
+**Write (15, one payable)**
 
 | Method | Who | Notes |
 | --- | --- | --- |
@@ -428,7 +427,9 @@ genlayer call 0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6 list_rounds
 `list_round_funders(round_id)`. `get_refund` also reports `pending_atto`, `refund_state`
 (`"sent"`, `"owed"` after a bounce, or empty), `refund_sent_at`, and `refund_attempts` so the UI can
 tell "claimable", "sent but not confirmed" and "bounced, claim again" apart. `get_stats` reports
-`bounced_refunds` and `bounced_atto` next to the in-flight counters.
+`bounced_refunds` and `bounced_atto` next to the in-flight counters, plus
+`payout_in_flight_atto`, `refund_in_flight_atto` and `returned_surplus_atto` (value that came back
+from a failed transfer and is not explained by funding minus the ledger).
 
 `funder` in `get_refund` is a 0x-prefixed hex string (case-insensitive), so the ledger can be read
 from the JS SDK without constructing calldata address objects. `list_round_funders` returns every

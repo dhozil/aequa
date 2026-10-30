@@ -60,8 +60,12 @@ Press Evaluate on a proposal: within one to three minutes it shows criterion sco
 ## 06 · Contract link
 
 ```
-https://explorer-studio.genlayer.com/address/0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6
+https://explorer-studio.genlayer.com/address/0x7079fE0a3321442818705E85f45C04210eBE7832
 ```
+
+Deployed from `main` (`6114e14`) on 30 October 2026, tx
+`0x7cc0c98d69ffff8ad700a179353165e473fb4550a0ee8a5328ccca6737517385`. Demo state at deploy:
+round `r0001` open with 5 GEN funded, budget 5 GEN, cap 2 GEN, threshold 0.
 
 The contract is deployed on **StudioNet** (chain 61999), so the link points at the Studio
 explorer. The form's placeholder shows `scan.bradbury.genlayer.com`; if the stewards require a
