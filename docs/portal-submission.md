@@ -102,10 +102,19 @@ What changed for this review:
   reservation. The record is removed on reversal and expires after `PAYOUT_REVERSAL_WINDOW`.
 - `disburse` refuses to start while `refund_in_flight > 0`, so a payout can never overlap a refund
   transfer that could still bounce; `claim_refund` already refused while a payout was in flight.
-- `get_stats` exposes `bounced_payouts` and `bounced_payout_atto`; `get_proposal` exposes
-  `payout_observed_at`, `payout_confirm_after`, and `payout_settle_seconds`.
+- `get_stats` exposes `bounced_payouts`, `bounced_payout_atto`, the in-flight amounts and
+  `returned_surplus_atto`; `get_proposal` exposes `payout_observed_at`, `payout_confirm_after`, and
+  `payout_settle_seconds`.
+- Bounce detection no longer depends on `__on_errored_message__`: the live StudioNet deployment had
+  three GEN of returned transfers with `bounced_refunds = 0`, so the hook was never dispatched.
+  `reconcile_payout(proposal_id)` and `reconcile_refund(round_id)` are permissionless and reverse a
+  settlement when the contract balance proves the value came back (funding minus the ledger cannot
+  explain the surplus). Both refuse when no returned value covers the amount.
 - Focused tests: `test_confirm_payout_after_the_balance_drops`,
   `test_a_settle_observation_is_forgotten_when_the_value_returns`,
   `test_an_early_confirmation_is_reversed_when_the_transfer_bounces`,
+  `test_a_confirmed_payout_is_reversed_when_the_value_returns`,
+  `test_reconcile_payout_refuses_without_a_returned_transfer`,
+  `test_reconcile_refund_releases_a_settled_claim_whose_value_returned`,
   `test_a_bounce_of_an_unrelated_payout_value_is_ignored`,
   `test_payout_cannot_start_while_a_refund_is_unresolved`.

@@ -177,6 +177,14 @@ def cmd_recover_payout(args):
     _print(_read(client, args.contract, "get_stats"))
 
 
+def cmd_reconcile_payout(args):
+    """Reverse a settled payout whose value came back to the contract."""
+    client = _client(args)
+    _write(client, args.contract, "reconcile_payout", [args.proposal_id])
+    _print(_read(client, args.contract, "get_proposal", [args.proposal_id]))
+    _print(_read(client, args.contract, "get_stats"))
+
+
 def cmd_close_round(args):
     client = _client(args)
     _write(client, args.contract, "close_round", [args.round_id])
@@ -212,6 +220,15 @@ def cmd_recover_refund(args):
     funder = args.funder or client.local_account.address
     _write(client, args.contract, "recover_refund", [args.round_id])
     _print(_read(client, args.contract, "get_refund", [args.round_id, funder]))
+
+
+def cmd_reconcile_refund(args):
+    """Reverse a settled refund whose value came back to the contract."""
+    client = _client(args)
+    funder = args.funder or client.local_account.address
+    _write(client, args.contract, "reconcile_refund", [args.round_id])
+    _print(_read(client, args.contract, "get_refund", [args.round_id, funder]))
+    _print(_read(client, args.contract, "get_round", [args.round_id]))
 
 
 def build_parser():
@@ -283,6 +300,13 @@ def build_parser():
     sub.add_argument("--proposal-id", required=True)
     sub.set_defaults(func=cmd_recover_payout)
 
+    sub = commands.add_parser(
+        "reconcile-payout",
+        help="Reverse a settled payout whose value is back in the contract",
+    )
+    sub.add_argument("--proposal-id", required=True)
+    sub.set_defaults(func=cmd_reconcile_payout)
+
     sub = commands.add_parser("close-round", help="Close a round to new proposals and funding")
     sub.add_argument("--round-id", required=True)
     sub.set_defaults(func=cmd_close_round)
@@ -316,6 +340,18 @@ def build_parser():
         help="Funder address to print (default: the signing wallet)",
     )
     sub.set_defaults(func=cmd_recover_refund)
+
+    sub = commands.add_parser(
+        "reconcile-refund",
+        help="Reverse a settled refund whose value is back in the contract",
+    )
+    sub.add_argument("--round-id", required=True)
+    sub.add_argument(
+        "--funder",
+        default="",
+        help="Funder address to print (default: the signing wallet)",
+    )
+    sub.set_defaults(func=cmd_reconcile_refund)
 
     return parser
 

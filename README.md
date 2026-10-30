@@ -120,6 +120,29 @@ first (leaving one recorded as paid while its GEN is back in the contract is the
 exists to prevent) and the most recent record otherwise. Payouts of different amounts, which is the
 normal case across rounds, are always attributed exactly.
 
+### Bounce detection that does not depend on the hook
+
+The live StudioNet deployment showed why the hook cannot be the only safety net: three GEN of failed
+child transfers had returned to the contract while `bounced_refunds` was still 0, so
+`__on_errored_message__` had never been dispatched. The returned value is still observable, because
+it raises the contract's balance above what funding and the ledger account for:
+
+```
+expected = total_received - total_paid - total_refunded
+           - payout_in_flight_atto - refund_in_flight_atto
+surplus  = max(0, balance - expected)
+```
+
+Every payable entry point (`fund_round`, and the hook when it does fire) records its value, so a
+surplus can only be a child transfer handing its value back. `reconcile_payout(proposal_id)` and
+`reconcile_refund(round_id)` are permissionless and use that surplus to undo a settlement that was
+recorded before its transfer failed: the grant returns to `payout_pending`/`owed` on the same
+reservation, or the refund ledger credit is taken back and the funder can claim again. Both refuse
+when no returned value covers the amount, so a real delivery can never be reversed by calling them.
+They only handle *settled* transfers; while a transfer is still in flight the money has not been
+recorded as paid and `recover_payout`/`recover_refund` keep owning that case. `get_stats` reports
+`returned_surplus_atto` so the surplus is visible before anyone reconciles.
+
 Rules enforced by the contract:
 
 - **One un-reconciled payout at a time** (`payout_in_flight`). With two transfers in flight, a
@@ -393,6 +416,8 @@ genlayer call 0x2489Af08c51C8346F4362d3D1e4C6c63a6E1E5e6 list_rounds
 | `disburse(proposal_id)` | owner / applicant | emits the GEN transfer and moves the proposal to `payout_pending` |
 | `confirm_payout(proposal_id)` | anyone | permissionless; marks paid when the balance proves the transfer left |
 | `recover_payout(proposal_id)` | anyone | permissionless; after 1h, returns a bounced payout for retry or releases the reservation |
+| `reconcile_payout(proposal_id)` | anyone | permissionless; reverses a settled payout whose value is visibly back in the contract |
+| `reconcile_refund(round_id)` | anyone | permissionless; reverses a settled refund whose value is visibly back in the contract |
 | `set_paused(value)` | owner | stops new rounds, funding, and evaluation; payouts stay claimable |
 | `transfer_ownership(new_owner)` | owner | change the admin |
 

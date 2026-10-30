@@ -582,6 +582,12 @@ class AequaGrants(gl.Contract):
     # signal: no balance reading has to be trusted to learn it.
     bounced_refunds: u256
     bounced_atto: u256
+    # Value currently held in a child transfer per leg. A failed transfer hands
+    # that value back, which raises `balance` without raising `total_received`.
+    # Keeping the in-flight amounts is what lets the contract tell a genuine
+    # deposit apart from a returned transfer without trusting a hook to fire.
+    payout_in_flight_atto: u256
+    refund_in_flight_atto: u256
 
     def __init__(self):
         self.owner = gl.message.sender_address
@@ -745,16 +751,49 @@ class AequaGrants(gl.Contract):
         self.refund_pending_state = REFUND_SENT
         self.refund_observed_at = u256(0)
         self.refund_in_flight += u256(1)
+        self.refund_in_flight_atto += u256(claimable)
         try:
             _Recipient(gl.message.sender_address).emit_transfer(value=u256(claimable))
         except Exception:
             # The child transaction was never created, so nothing can arrive.
             # Leave the claim unrecorded instead of losing it.
             self._clear_refund_pending()
-            self.refund_in_flight -= u256(1)
+            self._release_refund_flight(claimable)
             raise gl.vm.UserError(
                 f"{ERROR_TRANSIENT} refund could not be emitted; retry"
             )
+
+    def _release_refund_flight(self, amount: int) -> None:
+        if int(self.refund_in_flight) > 0:
+            self.refund_in_flight -= u256(1)
+        self.refund_in_flight_atto = u256(
+            max(0, int(self.refund_in_flight_atto) - amount)
+        )
+
+    def _release_payout_flight(self, amount: int) -> None:
+        if int(self.payout_in_flight) > 0:
+            self.payout_in_flight -= u256(1)
+        self.payout_in_flight_atto = u256(
+            max(0, int(self.payout_in_flight_atto) - amount)
+        )
+
+    def _bounced_surplus(self) -> int:
+        """Value held beyond what funding and the ledger account for.
+
+        The only way `balance` can exceed `total_received` minus the value that
+        already left or is still held in a child transfer is a failed transfer
+        handing its value back. Nothing else credits this contract: every payable
+        entry point records its value in `total_received`.
+        """
+        expected = (
+            int(self.total_received)
+            - int(self.total_paid)
+            - int(self.total_refunded)
+            - int(self.payout_in_flight_atto)
+            - int(self.refund_in_flight_atto)
+        )
+        surplus = int(self.balance) - expected
+        return surplus if surplus > 0 else 0
 
     def _clear_refund_pending(self) -> None:
         self.refund_pending_round = ""
@@ -835,7 +874,7 @@ class AequaGrants(gl.Contract):
         self.refund_pending_balance_at_emit = u256(0)
         self.refund_pending_received_at_emit = u256(0)
         self.refund_observed_at = u256(0)
-        self.refund_in_flight -= u256(1)
+        self._release_refund_flight(amount)
         return REFUND_DELIVERED
 
     @gl.public.write
@@ -870,20 +909,53 @@ class AequaGrants(gl.Contract):
             raise gl.vm.UserError(
                 f"{ERROR_EXPECTED} refund was delivered; confirm_refund instead"
             )
+        amount = int(self.refund_pending_amount)
         self._clear_refund_pending()
-        self.refund_in_flight -= u256(1)
+        self._release_refund_flight(amount)
+        return REFUND_OWED
+
+    @gl.public.write
+    def reconcile_refund(self, round_id: str) -> str:
+        """Release a settled refund whose value visibly came back.
+
+        The bounce hook is not a reliable signal: the StudioNet deployment has
+        never invoked it for a failed child transfer. The returned value is still
+        observable, because it raises `balance` above what funding and the ledger
+        account for. This checks that surplus and undoes the ledger credit
+        immediately instead of waiting for the one-hour recovery window.
+        """
+        if round_id not in self.rounds:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown round")
+        if (
+            self.refund_pending_state != REFUND_DELIVERED
+            or self.refund_pending_round != round_id
+        ):
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} no settled refund to reconcile for this round"
+            )
+        amount = int(self.refund_pending_amount)
+        if amount <= 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} refund has no settled amount")
+        if self._bounced_surplus() < amount:
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} no returned transfer covers this refund"
+            )
+        if not self._reverse_bounced_refund(amount):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} refund could not be reversed")
+        self.bounced_refunds += u256(1)
+        self.bounced_atto += u256(amount)
         return REFUND_OWED
 
     @gl.public.write.payable
     def __on_errored_message__(self) -> None:
         """A child transfer bounced and handed its value back.
 
-        GenVM calls this hook on the sending contract when an emitted message
-        fails, crediting the returned value through `gl.message.value`. That is
-        the only authoritative on-chain "did not arrive" signal, so the transfer
-        it was paying is reversed immediately - even when a confirmation had
-        already settled it from a balance reading. Waiting out a grace period is
-        only the fallback for the case where no hook ever arrives.
+        This is the fast path: when the runtime dispatches it, the transfer it was
+        paying is reversed immediately - even when a confirmation had already
+        settled it from a balance reading. It is not the safety net, because the
+        hook is not guaranteed to fire (the StudioNet deployment has never invoked
+        it). `reconcile_payout` and `reconcile_refund` detect the same event from
+        the returned value instead.
 
         The refund record is checked first: a refund and a payout can never be
         in flight together, but a settled payout is still watched for a while,
@@ -976,8 +1048,12 @@ class AequaGrants(gl.Contract):
                 matched_at = watched_at
         if not proposal_id:
             return False
-        proposal = self.proposals[proposal_id]
+        self._reverse_payout(proposal_id, amount)
+        return True
 
+    def _reverse_payout(self, proposal_id: str, amount: int) -> None:
+        """Move a payout back to `owed`, undoing a settlement if there was one."""
+        proposal = self.proposals[proposal_id]
         if proposal.payout_state == PAYOUT_DELIVERED:
             round_ = self.rounds[proposal.round_id]
             round_.paid_atto = u256(max(0, int(round_.paid_atto) - amount))
@@ -985,8 +1061,8 @@ class AequaGrants(gl.Contract):
             self.total_paid = u256(max(0, int(self.total_paid) - amount))
             self.total_reserved += u256(amount)
             proposal.paid_atto = u256(0)
-        elif int(self.payout_in_flight) > 0:
-            self.payout_in_flight -= u256(1)
+        else:
+            self._release_payout_flight(amount)
 
         proposal.status = PROPOSAL_PAYOUT_PENDING
         proposal.payout_state = PAYOUT_OWED
@@ -995,7 +1071,6 @@ class AequaGrants(gl.Contract):
         proposal.payout_balance_at_emit = u256(0)
         proposal.payout_received_at_emit = u256(0)
         self._clear_payout_watch(proposal_id)
-        return True
 
     def _reverse_bounced_refund(self, value: int) -> bool:
         """Undo the claim that just bounced, if this value is that claim.
@@ -1020,8 +1095,8 @@ class AequaGrants(gl.Contract):
             round_ = self.rounds[round_id]
             round_.refunded_atto = u256(max(0, int(round_.refunded_atto) - amount))
             self.total_refunded = u256(max(0, int(self.total_refunded) - amount))
-        elif int(self.refund_in_flight) > 0:
-            self.refund_in_flight -= u256(1)
+        else:
+            self._release_refund_flight(amount)
         self.refund_pending_state = REFUND_OWED
         self.refund_pending_sent_at = u256(0)
         self.refund_pending_balance_at_emit = u256(0)
@@ -1420,6 +1495,7 @@ Rules:
         proposal.payout_balance_at_emit = u256(int(self.balance))
         proposal.payout_received_at_emit = u256(int(self.total_received))
         self.payout_in_flight += u256(1)
+        self.payout_in_flight_atto += u256(amount)
         # Remember which transfer is being watched. The record survives
         # `confirm_payout` so a bounce reported later can undo the settlement.
         self._watch_payout(proposal_id, amount)
@@ -1433,7 +1509,7 @@ Rules:
             proposal.payout_observed_at = u256(0)
             proposal.payout_balance_at_emit = u256(0)
             proposal.payout_received_at_emit = u256(0)
-            self.payout_in_flight -= u256(1)
+            self._release_payout_flight(amount)
             self._clear_payout_watch(proposal_id)
             raise gl.vm.UserError(f"{ERROR_TRANSIENT} payout could not be emitted; retry")
 
@@ -1492,7 +1568,7 @@ Rules:
         proposal.payout_observed_at = u256(0)
         proposal.payout_balance_at_emit = u256(0)
         proposal.payout_received_at_emit = u256(0)
-        self.payout_in_flight -= u256(1)
+        self._release_payout_flight(amount)
         # Keep watching this transfer: a bounce reported after settlement must
         # still be able to take the ledger credit back.
         self.payout_watch_at[proposal_id] = u256(now)
@@ -1539,7 +1615,7 @@ Rules:
         proposal.payout_observed_at = u256(0)
         proposal.payout_balance_at_emit = u256(0)
         proposal.payout_received_at_emit = u256(0)
-        self.payout_in_flight -= u256(1)
+        self._release_payout_flight(int(proposal.requested_atto))
         self._clear_payout_watch(proposal_id)
 
         if int(proposal.payout_attempts) >= MAX_PAYOUT_ATTEMPTS:
@@ -1553,6 +1629,44 @@ Rules:
             return PROPOSAL_PAYOUT_FAILED
 
         proposal.payout_state = PAYOUT_OWED
+        return PAYOUT_OWED
+
+    @gl.public.write
+    def reconcile_payout(self, proposal_id: str) -> str:
+        """Reverse a settled payout whose value visibly came back.
+
+        A child transfer that fails after `confirm_payout` had already settled it
+        leaves the grant recorded as paid while its GEN sits in the contract. The
+        returned value is detectable without the hook: `balance` grows above the
+        funding minus the ledger. This reverses that settlement permissionlessly,
+        so an early confirmation can always be corrected afterwards.
+
+        Only a settled payout is handled here. While a transfer is still in
+        flight the money has not been recorded as paid, and the returned-value
+        check cannot tell which watched transfer came back, so `recover_payout`
+        keeps owning that case.
+        """
+        if proposal_id not in self.proposals:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown proposal")
+        proposal = self.proposals[proposal_id]
+        if proposal.payout_state == PAYOUT_OWED:
+            return PAYOUT_OWED
+        if proposal.payout_state != PAYOUT_DELIVERED:
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} payout is not settled yet; confirm or recover it"
+            )
+        amount = int(self.payout_watch_atto.get(proposal_id, u256(0)))
+        if amount <= 0:
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} payout is no longer being watched"
+            )
+        if self._bounced_surplus() < amount:
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} no returned transfer covers this payout"
+            )
+        self._reverse_payout(proposal_id, amount)
+        self.bounced_payouts += u256(1)
+        self.bounced_payout_atto += u256(amount)
         return PAYOUT_OWED
 
     def _payout_delivered(self, proposal: Proposal) -> bool:
@@ -1654,6 +1768,9 @@ Rules:
             "bounced_atto": str(int(self.bounced_atto)),
             "bounced_payouts": int(self.bounced_payouts),
             "bounced_payout_atto": str(int(self.bounced_payout_atto)),
+            "payout_in_flight_atto": str(int(self.payout_in_flight_atto)),
+            "refund_in_flight_atto": str(int(self.refund_in_flight_atto)),
+            "returned_surplus_atto": str(self._bounced_surplus()),
             "round_count": len(self.round_order),
             "proposal_count": len(self.proposal_order),
         }

@@ -435,6 +435,100 @@ def test_a_bounce_of_an_unrelated_payout_value_is_ignored(
     assert grants.get_stats()["bounced_payouts"] == 0
 
 
+def test_a_confirmed_payout_is_reversed_when_the_value_returns(
+    funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
+):
+    """The hook is not guaranteed to fire; the returned value is the signal.
+
+    StudioNet never invoked `__on_errored_message__` for a failed child transfer,
+    so a bounce is detected from the contract's own balance instead: funding minus
+    the ledger cannot explain the surplus.
+    """
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    deliver_payout(proposal_id, held=1000, amount=100)
+    assert grants.get_proposal(proposal_id)["status"] == "paid"
+    assert grants.get_stats()["returned_surplus_atto"] == "0"
+
+    _credit(direct_vm, 1000)  # the value came back without a hook
+    assert grants.get_stats()["returned_surplus_atto"] == "100"
+
+    assert grants.reconcile_payout(proposal_id) == "owed"
+    data = grants.get_proposal(proposal_id)
+    assert data["status"] == "payout_pending"
+    assert data["payout_state"] == "owed"
+    assert data["paid_atto"] == "0"
+    assert grants.get_round(funded_round)["paid_atto"] == "0"
+    assert grants.get_round(funded_round)["reserved_atto"] == "100"
+    assert grants.get_stats()["total_paid_atto"] == "0"
+    assert grants.get_stats()["bounced_payouts"] == 1
+    # The surplus was consumed by the reversal, so it is not reported twice.
+    assert grants.get_stats()["returned_surplus_atto"] == "0"
+
+    # The grant is payable again on the same reservation.
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    assert grants.get_proposal(proposal_id)["payout_attempts"] == 2
+
+
+def test_reconcile_payout_refuses_without_a_returned_transfer(
+    funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    deliver_payout(proposal_id, held=1000, amount=100)
+
+    with direct_vm.expect_revert("no returned transfer covers this payout"):
+        grants.reconcile_payout(proposal_id)
+    assert grants.get_proposal(proposal_id)["status"] == "paid"
+
+
+def test_reconcile_payout_refuses_while_the_transfer_is_in_flight(
+    funded_round, grants, submit, direct_vm, direct_alice
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    _credit(direct_vm, 900)  # the emit deducted the value; nothing is settled
+
+    with direct_vm.expect_revert("not settled yet"):
+        grants.reconcile_payout(proposal_id)
+
+
+def test_reconcile_refund_releases_a_settled_claim_whose_value_returned(
+    funded_round, grants, submit, claim_refund, deliver_refund, direct_vm,
+    direct_alice, direct_owner, direct_bob,
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    direct_vm.sender = direct_owner
+    grants.close_round(funded_round)
+    claim_refund(funded_round, direct_bob, held=1000)
+    deliver_refund(funded_round, held=1000, amount=900)
+    assert grants.get_round(funded_round)["refunded_atto"] == "900"
+
+    _credit(direct_vm, 1000)  # the refund value came back
+    assert grants.get_stats()["returned_surplus_atto"] == "900"
+
+    assert grants.reconcile_refund(funded_round) == "owed"
+    data = grants.get_round(funded_round)
+    assert data["refunded_atto"] == "0"
+    # The approved grant is still reserved, so only the rest is claimable.
+    assert data["available_atto"] == "900"
+
+    quote = grants.get_refund(funded_round, direct_bob)
+    assert quote["claimed_atto"] == "0"
+    assert quote["claimable_atto"] == "900"
+    assert quote["refund_state"] == "owed"
+    assert grants.get_stats()["total_refunded_atto"] == "0"
+    assert grants.get_stats()["refund_in_flight"] == 0
+    assert grants.get_stats()["returned_surplus_atto"] == "0"
+
+    # The payout is no longer held up by the refund leg.
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    assert grants.get_proposal(proposal_id)["status"] == "payout_pending"
+
+
 def test_payout_cannot_start_while_a_refund_is_unresolved(
     funded_round, grants, submit, claim_refund, deliver_refund, direct_vm,
     direct_alice, direct_owner, direct_bob,
