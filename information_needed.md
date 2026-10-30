@@ -238,6 +238,33 @@ genlayer schema 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e | grep -E "reconcile_
 `balance_atto = 5000000000000000000`, `returned_surplus_atto = "0"` — the invariant holds with a
 funded, open round and no transfers in flight.
 
+### Confirm the deployed source *is* the corrected source
+
+GenLayer stores source, not bytecode, and the deploy transaction carries it: `data.contract_code`
+is the base64 of the exact file that was deployed. Decoding it and diffing against this repository
+answers "is the live contract the fixed one" without trusting a timestamp:
+
+```bash
+python - <<'PY'
+import base64, pathlib, requests
+rpc = "https://studio.genlayer.com/api"
+h = "0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb"
+tx = requests.post(rpc, json={"jsonrpc": "2.0", "id": 1, "method": "eth_getTransactionByHash",
+                              "params": [h]}, timeout=30).json()["result"]
+live = base64.b64decode(tx["data"]["contract_code"]).replace(b"\r\n", b"\n")
+repo = pathlib.Path("contracts/aequa_grants.py").read_bytes().replace(b"\r\n", b"\n")
+print("identical:", live == repo)
+print("applicant check:", b"only the applicant can report that a payout did not arrive" in live)
+print("funder check:", b"only the funder of this claim can report that it did not arrive" in live)
+print("overlap guard:", b"a refund is awaiting reconciliation" in live)
+PY
+```
+
+Result against the deployment in section 6: `identical: True`, `applicant check: True`,
+`funder check: True`, `overlap guard: True` (78 443 bytes, same as the repository file apart from
+line endings). The deploy block is `2026-10-30T03:00:59Z`, later than every commit touching the
+contract, and the working tree at `8c20a20` is clean.
+
 To exercise the bounce path itself, the contract needs a child transfer that fails. That cannot be
 forced from the outside, so the reversal path is covered by the direct-mode tests above rather than
 by a live transaction. Once a transfer does fail, the sequence is:
