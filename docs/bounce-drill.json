@@ -1,0 +1,145 @@
+{
+  "state": {
+    "owner": "0x3958A649b41cd7C8561F4233cC0F5b0469Bc98E0",
+    "contract": "0x0aE0139DBD00DB704Ac27Eb45492FD1A73a33Ae8",
+    "sink": "0xaa5c7cbEb2AA514F2F1b918c017ED209BfCf1e81",
+    "round": "r0003",
+    "proposal": "p00000003",
+    "evaluation": {
+      "status": "approved",
+      "score": 94,
+      "decision": "approve",
+      "gates": {
+        "original_work": true,
+        "public_evidence": true,
+        "scope_match": true
+      },
+      "reason": "approved"
+    },
+    "refund_claim": {
+      "state": "sent",
+      "pending": "500000000000000000",
+      "claimable": "500000000000000000"
+    },
+    "overlap_check": {
+      "refused": true,
+      "reason": "{'status': 'rollback', 'payload': '[EXPECTED] a refund is awaiting reconciliation; confirm or recover it before paying out'}",
+      "tx": "0x3d14c45fff4f6889ab122f5e6a9194479b95c8ebee0f09838f7cb5f4214e30cb"
+    },
+    "refund_settled": {
+      "in_flight": 0,
+      "claimed": "500000000000000000",
+      "surplus": "0"
+    },
+    "after_disburse": {
+      "status": "payout_pending",
+      "state": "sent",
+      "attempts": 1,
+      "tx": "0x295c82b98088e4df9bb52fd7232e2e668a3b1a24eb9d4eeb2e2f0d481c853909"
+    },
+    "confirm_first": {
+      "status": "payout_pending",
+      "state": "sent",
+      "observed_at": 1793326938,
+      "confirm_after": 1793327028
+    },
+    "confirm_second": {
+      "status": "paid",
+      "state": "delivered",
+      "paid_atto": "500000000000000000"
+    },
+    "surplus_after_bounce": "1000000000000000",
+    "after_reconcile": {
+      "ok": false,
+      "status": "paid",
+      "state": "delivered",
+      "paid_atto": "500000000000000000",
+      "total_paid_atto": "500000000000000000",
+      "reserved_atto": "0",
+      "bounced_payouts": 0,
+      "surplus": "1000000000000000",
+      "tx": "0xe73dd36a90044626b9b72eeaf4896114ea50dfbf3c574fa59a4719b93e1c8214"
+    }
+  },
+  "steps": [
+    {
+      "step": "create_round",
+      "tx": "0xf06eb83c2c2958522f4c80be6681388deb790d7131df37da114a616380fa7903",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "fund_round",
+      "tx": "0x4625fbddfd6a398c023c96a52da03228fc746da60a67a0b5eb364cd971c476b6",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "apply",
+      "tx": "0x2ef8b05b112f58a155f928ef90f344c203bd120f2e8e688cf3bd7e7280ff3543",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "evaluate_proposal",
+      "tx": "0xfbcfedb38009cede221a72c93eb31b5599a6882c7b70504933ce04e274b72184",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "close_round",
+      "tx": "0x647f2d21a0a99434be2e2ef1c05fcbcaad804bb897f6a16f310d3077f0176a68",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "claim_refund",
+      "tx": "0x58054e501e8faad7a08c3db460e30af56b9358b2de8b5d8099d757b4ae9a482c",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "disburse",
+      "tx": "0x3d14c45fff4f6889ab122f5e6a9194479b95c8ebee0f09838f7cb5f4214e30cb",
+      "result": "MAJORITY_AGREE",
+      "error": "{'status': 'rollback', 'payload': '[EXPECTED] a refund is awaiting reconciliation; confirm or recover it before paying out'}",
+      "refused": true
+    },
+    {
+      "step": "confirm_refund",
+      "tx": "0xfe9490d0a28fb4d66af43059c4a0613156da731753e7aebaa8a6f2de8519e1ca",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "confirm_refund",
+      "tx": "0x5e3e785b64ca6c9d7d00944706000161c360b60e9c7e60066ddf2baadbdbf156",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "disburse",
+      "tx": "0x295c82b98088e4df9bb52fd7232e2e668a3b1a24eb9d4eeb2e2f0d481c853909",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "confirm_payout",
+      "tx": "0x6518d5313ce2b98020353b205b60f6bca79cc291906938c963d602c6ba78d0f8",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "confirm_payout",
+      "tx": "0xcac450bcaca0ee6dee11e87a98bfd8a41b68813e5458011db98c85103def06ba",
+      "result": "MAJORITY_AGREE",
+      "error": ""
+    },
+    {
+      "step": "reconcile_payout",
+      "tx": "0xe73dd36a90044626b9b72eeaf4896114ea50dfbf3c574fa59a4719b93e1c8214",
+      "result": "MAJORITY_AGREE",
+      "error": "{'status': 'rollback', 'payload': '[EXPECTED] no returned transfer covers this payout'}"
+    }
+  ]
+}

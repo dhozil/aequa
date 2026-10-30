@@ -15,8 +15,8 @@ links): [`information_needed.md`](information_needed.md).
 | Item | Value |
 | --- | --- |
 | Network | Studionet (`https://studio.genlayer.com/api`, chain id `61999`) |
-| Contract | `0x7079fE0a3321442818705E85f45C04210eBE7832` |
-| Deploy tx | `0x7cc0c98d69ffff8ad700a179353165e473fb4550a0ee8a5328ccca6737517385` |
+| Contract | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
+| Deploy tx | `0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb` |
 | Owner | `0x3958A649b41cd7C8561F4233cC0F5b0469Bc98E0` |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` (pinned) |
 
@@ -136,9 +136,12 @@ surplus  = max(0, balance - expected)
 ```
 
 Every payable entry point (`fund_round`, and the hook when it does fire) records its value, so a
-surplus can only be a child transfer handing its value back. `reconcile_payout(proposal_id)` and
-`reconcile_refund(round_id)` are permissionless and use that surplus to undo a settlement that was
-recorded before its transfer failed: the grant returns to `payout_pending`/`owed` on the same
+a surplus is normally a child transfer handing its value back. `reconcile_payout(proposal_id)` and
+`reconcile_refund(round_id)` use it to undo a settlement that was recorded before its transfer
+failed. They are restricted to the beneficiary — the applicant for a payout, and the funder whose
+claim is pending for a refund — because a plain GEN transfer to this contract raises the same balance
+and would otherwise let anyone forge a bounce (verified by the on-chain donation probe in
+`information_needed.md`): the grant returns to `payout_pending`/`owed` on the same
 reservation, or the refund ledger credit is taken back and the funder can claim again. Both refuse
 when no returned value covers the amount, so a real delivery can never be reversed by calling them.
 They only handle *settled* transfers; while a transfer is still in flight the money has not been
@@ -285,7 +288,7 @@ gltest tests/integration/test_aequa_full_surface.py -v -s --network studionet
 cd frontend && node scripts/contract-smoke.mjs
 
 # end-to-end against an already deployed contract (no new deploy)
-$env:AEQUA_GRANTS_ADDRESS="0x883D589c8822CD932DAbD26578FD72cfe24b1D64"
+$env:AEQUA_GRANTS_ADDRESS="0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e"
 gltest tests/integration -v -s --network studionet
 ```
 
@@ -314,7 +317,7 @@ Set these environment variables for Production (and Preview) before the first bu
 
 | Variable | Example |
 | --- | --- |
-| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0x7079fE0a3321442818705E85f45C04210eBE7832` |
+| `NEXT_PUBLIC_AEQUA_ADDRESS` | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
 | `NEXT_PUBLIC_RPC_URL` | `https://studio.genlayer.com/api` |
 | `NEXT_PUBLIC_EXPLORER_URL` | `https://genlayer-explorer.vercel.app` |
 
@@ -355,7 +358,7 @@ PowerShell, so write to the contract through the Python helper:
 
 ```bash
 # inspect all state
-python scripts/aequa.py --contract 0x883D589c8822CD932DAbD26578FD72cfe24b1D64 list
+python scripts/aequa.py --contract 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e list
 
 # create a round (owner)
 python scripts/aequa.py --contract 0x... create-round \
@@ -397,7 +400,7 @@ python scripts/aequa.py --contract 0x... --key-env ACCOUNT_PRIVATE_KEY claim-ref
 You can also read state without the helper:
 
 ```bash
-genlayer call 0x7079fE0a3321442818705E85f45C04210eBE7832 list_rounds
+genlayer call 0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e list_rounds
 ```
 
 ## Contract API
@@ -418,8 +421,8 @@ genlayer call 0x7079fE0a3321442818705E85f45C04210eBE7832 list_rounds
 | `disburse(proposal_id)` | owner / applicant | emits the GEN transfer and moves the proposal to `payout_pending` |
 | `confirm_payout(proposal_id)` | anyone | permissionless; marks paid when the balance proves the transfer left |
 | `recover_payout(proposal_id)` | anyone | permissionless; after 1h, returns a bounced payout for retry or releases the reservation |
-| `reconcile_payout(proposal_id)` | anyone | permissionless; reverses a settled payout whose value is visibly back in the contract |
-| `reconcile_refund(round_id)` | anyone | permissionless; reverses a settled refund whose value is visibly back in the contract |
+| `reconcile_payout(proposal_id)` | applicant | reverses a settled payout whose value is visibly back in the contract; the applicant is the only party who can attest non-receipt |
+| `reconcile_refund(round_id)` | claim's funder | reverses a settled refund whose value is visibly back in the contract |
 | `set_paused(value)` | owner | stops new rounds, funding, and evaluation; payouts stay claimable |
 | `transfer_ownership(new_owner)` | owner | change the admin |
 

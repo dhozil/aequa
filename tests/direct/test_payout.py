@@ -454,6 +454,8 @@ def test_a_confirmed_payout_is_reversed_when_the_value_returns(
     _credit(direct_vm, 1000)  # the value came back without a hook
     assert grants.get_stats()["returned_surplus_atto"] == "100"
 
+    # Only the applicant can report its own payout as undelivered.
+    direct_vm.sender = direct_alice
     assert grants.reconcile_payout(proposal_id) == "owed"
     data = grants.get_proposal(proposal_id)
     assert data["status"] == "payout_pending"
@@ -479,6 +481,7 @@ def test_reconcile_payout_refuses_without_a_returned_transfer(
     _disburse(grants, direct_vm, proposal_id, direct_alice)
     deliver_payout(proposal_id, held=1000, amount=100)
 
+    direct_vm.sender = direct_alice
     with direct_vm.expect_revert("no returned transfer covers this payout"):
         grants.reconcile_payout(proposal_id)
     assert grants.get_proposal(proposal_id)["status"] == "paid"
@@ -492,8 +495,46 @@ def test_reconcile_payout_refuses_while_the_transfer_is_in_flight(
     _disburse(grants, direct_vm, proposal_id, direct_alice)
     _credit(direct_vm, 900)  # the emit deducted the value; nothing is settled
 
+    direct_vm.sender = direct_alice
     with direct_vm.expect_revert("not settled yet"):
         grants.reconcile_payout(proposal_id)
+
+
+def test_a_donation_cannot_force_a_settled_payout_back(
+    funded_round, grants, submit, direct_vm, direct_alice, direct_bob, deliver_payout
+):
+    """Anyone can send GEN here, so the surplus alone must not authorise a reversal."""
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    deliver_payout(proposal_id, held=1000, amount=100)
+
+    _credit(direct_vm, 1000)  # a plain donation, not a returned transfer
+    assert grants.get_stats()["returned_surplus_atto"] == "100"
+
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert("only the applicant"):
+        grants.reconcile_payout(proposal_id)
+    assert grants.get_proposal(proposal_id)["status"] == "paid"
+
+
+def test_a_donation_cannot_force_a_settled_refund_back(
+    funded_round, grants, submit, claim_refund, deliver_refund, direct_vm,
+    direct_alice, direct_owner, direct_bob,
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    direct_vm.sender = direct_owner
+    grants.close_round(funded_round)
+    claim_refund(funded_round, direct_bob, held=1000)
+    deliver_refund(funded_round, held=1000, amount=900)
+
+    _credit(direct_vm, 1000)  # a plain donation equal to the refund
+    assert grants.get_stats()["returned_surplus_atto"] == "900"
+
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("only the funder of this claim"):
+        grants.reconcile_refund(funded_round)
+    assert grants.get_refund(funded_round, direct_bob)["claimed_atto"] == "900"
 
 
 def test_reconcile_refund_releases_a_settled_claim_whose_value_returned(
@@ -510,6 +551,7 @@ def test_reconcile_refund_releases_a_settled_claim_whose_value_returned(
     _credit(direct_vm, 1000)  # the refund value came back
     assert grants.get_stats()["returned_surplus_atto"] == "900"
 
+    direct_vm.sender = direct_bob
     assert grants.reconcile_refund(funded_round) == "owed"
     data = grants.get_round(funded_round)
     assert data["refunded_atto"] == "0"

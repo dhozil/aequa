@@ -2,7 +2,7 @@ export const APP_NAME = "Aequa Grants";
 export const APP_TAGLINE = "Grants by open criteria";
 
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_AEQUA_ADDRESS ??
-  "0x883D589c8822CD932DAbD26578FD72cfe24b1D64") as `0x${string}`;
+  "0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e") as `0x${string}`;
 
 export const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL ?? "https://studio.genlayer.com/api";

@@ -926,6 +926,17 @@ class AequaGrants(gl.Contract):
         """
         if round_id not in self.rounds:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown round")
+        # Only the funder whose claim is pending can report that it never
+        # arrived. A plain GEN transfer to this contract also looks like
+        # returned value, so a permissionless reversal could be forged by
+        # donating the amount and forcing a settled claim back to `owed`.
+        if (
+            _normalize_address(gl.message.sender_address)
+            != self.refund_pending_funder
+        ):
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} only the funder of this claim can report that it did not arrive"
+            )
         if (
             self.refund_pending_state != REFUND_DELIVERED
             or self.refund_pending_round != round_id
@@ -1649,6 +1660,13 @@ Rules:
         if proposal_id not in self.proposals:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown proposal")
         proposal = self.proposals[proposal_id]
+        # Only the applicant can report that their own payout did not arrive.
+        # The surplus is not proof on its own: anyone can send GEN to this
+        # contract, which raises the same balance a returned transfer would.
+        if gl.message.sender_address != proposal.applicant:
+            raise gl.vm.UserError(
+                f"{ERROR_EXPECTED} only the applicant can report that a payout did not arrive"
+            )
         if proposal.payout_state == PAYOUT_OWED:
             return PAYOUT_OWED
         if proposal.payout_state != PAYOUT_DELIVERED:
