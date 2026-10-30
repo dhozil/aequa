@@ -7,6 +7,9 @@ contract disburses funds to the applicant.
 
 Category: **AI Governance**. Status: contract, tests, and frontend are complete.
 
+Reviewer notes for the payout/refund reconciliation fix (request, mechanics, tests, transaction
+links): [`information_needed.md`](information_needed.md).
+
 ## Deployment
 
 | Item | Value |

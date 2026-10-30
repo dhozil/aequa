@@ -89,6 +89,9 @@ https://github.com/dhozil/aequa
 
 ## Corrected source (steward review)
 
+Full write-up for the reviewer, including the request, the mechanics, the tests and the transaction
+links: `https://github.com/dhozil/aequa/blob/main/information_needed.md`
+
 - Contract: `https://github.com/dhozil/aequa/blob/main/contracts/aequa_grants.py`
 - Payout reconciliation tests: `https://github.com/dhozil/aequa/blob/main/tests/direct/test_payout.py`
 - Refund reconciliation tests: `https://github.com/dhozil/aequa/blob/main/tests/direct/test_rounds.py`
