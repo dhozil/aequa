@@ -371,6 +371,54 @@ def test_an_early_confirmation_is_reversed_when_the_transfer_bounces(
     assert grants.get_proposal(proposal_id)["payout_attempts"] == 2
 
 
+def test_a_bounce_is_reversed_even_after_another_payout_started(
+    funded_round, grants, submit, direct_vm, direct_alice, direct_bob, deliver_payout
+):
+    """A later payout must not erase the watch record of an earlier one.
+
+    Every confirmed payout stays watched until the reversal window expires, so a
+    bounce reported after the next payout was started still finds its record.
+    """
+    first = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    second = submit(funded_round, direct_bob, requested=100)
+    direct_vm.mock_web(
+        r"https://example\.com/proposal",
+        {"status": 200, "body": EVIDENCE_TEXT},
+    )
+    direct_vm.mock_llm(r"(?s).*independent grant evaluator.*", llm_payload())
+    grants.evaluate_proposal(second)
+
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, first, direct_alice)
+    deliver_payout(first, held=1000, amount=100, at="2026-01-01T00:02:00Z")
+    assert grants.get_proposal(first)["status"] == "paid"
+
+    # The next payout starts, and only afterwards is the first one reported as
+    # bounced. Both are 100 atto, so the hook has to find the right record.
+    direct_vm.deal(direct_vm._contract_address, 900)
+    _disburse(grants, direct_vm, second, direct_bob)
+
+    _credit(direct_vm, 1000)
+    direct_vm.value = 100
+    grants.__on_errored_message__()
+    direct_vm.value = 0
+
+    reversed_one = grants.get_proposal(first)
+    other = grants.get_proposal(second)
+    assert reversed_one["status"] == "payout_pending"
+    assert reversed_one["payout_state"] == "owed"
+    assert reversed_one["paid_atto"] == "0"
+    assert grants.get_stats()["total_paid_atto"] == "0"
+    assert grants.get_round(funded_round)["reserved_atto"] == "200"
+    # Exactly one payout was reversed; the other keeps its own state.
+    assert other["status"] == "payout_pending"
+    assert sum(
+        1
+        for pid in (first, second)
+        if grants.get_proposal(pid)["payout_state"] == "owed"
+    ) == 1
+
+
 def test_a_bounce_of_an_unrelated_payout_value_is_ignored(
     funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
 ):

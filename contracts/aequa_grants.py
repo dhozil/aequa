@@ -55,6 +55,9 @@ PAYOUT_SETTLE_SECONDS = 90
 # bounced. `__on_errored_message__` reverses a delivery that was confirmed
 # within this window, so a temporary debit can never be finalised as delivered.
 PAYOUT_REVERSAL_WINDOW = 7200
+# Bounded watch set: enough to cover several unreconciled payouts, small enough
+# that pruning and lookup stay cheap.
+MAX_PAYOUT_WATCH = 8
 MAX_PAYOUT_ATTEMPTS = 3
 
 # Refunds use the same delivery contract as payouts: `claim_refund` only emits
@@ -545,12 +548,12 @@ class AequaGrants(gl.Contract):
     # At most one payout may be un-reconciled at a time. A single contract
     # balance can only be attributed to one outbound transfer.
     payout_in_flight: u256
-    # The payout whose child transfer may still bounce, kept after
-    # `confirm_payout` so a late bounce report can reverse a settlement that a
-    # fooled balance reading had already recorded as paid.
-    payout_watch_proposal: str
-    payout_watch_amount: u256
-    payout_watch_at: u256
+    # Payouts whose child transfer may still bounce, keyed by proposal id. The
+    # records survive `confirm_payout`, so a late bounce report can reverse a
+    # settlement that a fooled balance reading had already recorded as paid.
+    # Expired entries are pruned and the set is capped in `_watch_payout`.
+    payout_watch_atto: TreeMap[str, u256]
+    payout_watch_at: TreeMap[str, u256]
     bounced_payouts: u256
     bounced_payout_atto: u256
     # Per-round deposits per funder, and how much each one already took back.
@@ -897,10 +900,41 @@ class AequaGrants(gl.Contract):
             self.bounced_payouts += u256(1)
             self.bounced_payout_atto += u256(value)
 
-    def _clear_payout_watch(self) -> None:
-        self.payout_watch_proposal = ""
-        self.payout_watch_amount = u256(0)
-        self.payout_watch_at = u256(0)
+    def _clear_payout_watch(self, proposal_id: str) -> None:
+        if proposal_id in self.payout_watch_atto:
+            del self.payout_watch_atto[proposal_id]
+        if proposal_id in self.payout_watch_at:
+            del self.payout_watch_at[proposal_id]
+
+    def _prune_payout_watch(self) -> None:
+        now = _now_ts()
+        for proposal_id in list(self.payout_watch_at.keys()):
+            watched_at = int(self.payout_watch_at.get(proposal_id, u256(0)))
+            if watched_at <= 0 or now - watched_at > PAYOUT_REVERSAL_WINDOW:
+                self._clear_payout_watch(proposal_id)
+
+    def _watch_payout(self, proposal_id: str, amount: int) -> None:
+        """Start watching a payout transfer for a bounce report.
+
+        The set is pruned of expired entries first, then capped: an address that
+        never gets paid out must not be able to grow storage without bound.
+        """
+        self._prune_payout_watch()
+        if (
+            proposal_id not in self.payout_watch_at
+            and len(self.payout_watch_at.keys()) >= MAX_PAYOUT_WATCH
+        ):
+            oldest = ""
+            oldest_at = 0
+            for key in self.payout_watch_at.keys():
+                watched_at = int(self.payout_watch_at.get(key, u256(0)))
+                if oldest == "" or watched_at < oldest_at:
+                    oldest = key
+                    oldest_at = watched_at
+            if oldest:
+                self._clear_payout_watch(oldest)
+        self.payout_watch_atto[proposal_id] = u256(amount)
+        self.payout_watch_at[proposal_id] = u256(_now_ts())
 
     def _reverse_bounced_payout(self, value: int) -> bool:
         """Undo the payout that just bounced, if this value is that payout.
@@ -910,23 +944,39 @@ class AequaGrants(gl.Contract):
         had already been settled as delivered, the settlement is taken back too:
         `paid_atto` returns to `reserved_atto`, `total_paid` drops by the amount,
         and the proposal goes back to `payout_pending` so it can be paid again.
-
-        The watch record is cleared on reversal, so one bounce can never reverse
-        two settlements, and it expires after `PAYOUT_REVERSAL_WINDOW` so a stale
-        record cannot be matched by an unrelated child transfer later.
+        The hook carries only the returned value, never the recipient, so two
+        watched payouts of the same amount are indistinguishable here. A settled
+        record is reversed first: leaving one recorded as paid while its GEN is
+        back in the contract is the corruption this hook exists to prevent, while
+        an unsettled record only returns to `owed`. Between records in the same
+        state the most recent one wins. The record is removed after use, so one
+        bounce can never reverse two settlements, and it expires after
+        `PAYOUT_REVERSAL_WINDOW` so a stale record cannot be matched later.
         """
-        proposal_id = self.payout_watch_proposal
-        if not proposal_id or proposal_id not in self.proposals:
-            return False
-        amount = int(self.payout_watch_amount)
-        if amount <= 0 or amount != value:
-            return False
-        watched_at = int(self.payout_watch_at)
-        if watched_at <= 0 or _now_ts() - watched_at > PAYOUT_REVERSAL_WINDOW:
+        now = _now_ts()
+        amount = value
+        proposal_id = ""
+        best_rank = -1
+        matched_at = 0
+        for key in list(self.payout_watch_at.keys()):
+            if int(self.payout_watch_atto.get(key, u256(0))) != amount:
+                continue
+            watched_at = int(self.payout_watch_at.get(key, u256(0)))
+            if watched_at <= 0 or now - watched_at > PAYOUT_REVERSAL_WINDOW:
+                continue
+            if key not in self.proposals:
+                continue
+            state = self.proposals[key].payout_state
+            if state not in (PAYOUT_SENT, PAYOUT_DELIVERED):
+                continue
+            rank = 1 if state == PAYOUT_DELIVERED else 0
+            if rank > best_rank or (rank == best_rank and watched_at > matched_at):
+                proposal_id = key
+                best_rank = rank
+                matched_at = watched_at
+        if not proposal_id:
             return False
         proposal = self.proposals[proposal_id]
-        if proposal.payout_state not in (PAYOUT_SENT, PAYOUT_DELIVERED):
-            return False
 
         if proposal.payout_state == PAYOUT_DELIVERED:
             round_ = self.rounds[proposal.round_id]
@@ -944,7 +994,7 @@ class AequaGrants(gl.Contract):
         proposal.payout_observed_at = u256(0)
         proposal.payout_balance_at_emit = u256(0)
         proposal.payout_received_at_emit = u256(0)
-        self._clear_payout_watch()
+        self._clear_payout_watch(proposal_id)
         return True
 
     def _reverse_bounced_refund(self, value: int) -> bool:
@@ -1372,9 +1422,7 @@ Rules:
         self.payout_in_flight += u256(1)
         # Remember which transfer is being watched. The record survives
         # `confirm_payout` so a bounce reported later can undo the settlement.
-        self.payout_watch_proposal = proposal_id
-        self.payout_watch_amount = u256(amount)
-        self.payout_watch_at = u256(_now_ts())
+        self._watch_payout(proposal_id, amount)
         try:
             _Recipient(proposal.applicant).emit_transfer(value=u256(amount))
         except Exception:
@@ -1386,7 +1434,7 @@ Rules:
             proposal.payout_balance_at_emit = u256(0)
             proposal.payout_received_at_emit = u256(0)
             self.payout_in_flight -= u256(1)
-            self._clear_payout_watch()
+            self._clear_payout_watch(proposal_id)
             raise gl.vm.UserError(f"{ERROR_TRANSIENT} payout could not be emitted; retry")
 
         proposal.status = PROPOSAL_PAYOUT_PENDING
@@ -1447,7 +1495,7 @@ Rules:
         self.payout_in_flight -= u256(1)
         # Keep watching this transfer: a bounce reported after settlement must
         # still be able to take the ledger credit back.
-        self.payout_watch_at = u256(now)
+        self.payout_watch_at[proposal_id] = u256(now)
         return PAYOUT_DELIVERED
 
     @gl.public.write
@@ -1492,7 +1540,7 @@ Rules:
         proposal.payout_balance_at_emit = u256(0)
         proposal.payout_received_at_emit = u256(0)
         self.payout_in_flight -= u256(1)
-        self._clear_payout_watch()
+        self._clear_payout_watch(proposal_id)
 
         if int(proposal.payout_attempts) >= MAX_PAYOUT_ATTEMPTS:
             amount = int(proposal.requested_atto)

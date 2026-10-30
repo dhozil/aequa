@@ -105,14 +105,20 @@ credit back (`claimed_refunds`, `refunded_atto`, `total_refunded`). A refund the
 recorded as returned while its GEN sits in the contract, no matter how long the bounce takes.
 `recover_refund` remains as the manual fallback for the case where no hook report arrives.
 
-The same hook also owns settled payouts. `confirm_payout` keeps a watch record
-(`payout_watch_proposal`, `payout_watch_amount`, `payout_watch_at`) after it records a delivery, so a
+The same hook also owns settled payouts. `disburse` adds a watch record to `payout_watch_atto` /
+`payout_watch_at` (keyed by proposal, pruned on expiry, capped at `MAX_PAYOUT_WATCH = 8`), so a
 bounce reported up to `PAYOUT_REVERSAL_WINDOW = 7200` seconds later reverses the settlement itself:
 `paid_atto` goes back to `reserved_atto`, `total_paid` drops, `paid_atto` on the proposal returns to
 zero, the status goes back to `payout_pending`/`owed`, and the payout can be sent again on the same
-reservation. The watch record is cleared on reversal, so one bounce can never reverse two
-settlements, and it expires so a stale record cannot match an unrelated transfer later. Bounce
-counters are exposed as `bounced_payouts`/`bounced_payout_atto` next to the refund ones.
+reservation. The record is removed after use, so one bounce can never reverse two settlements, and it
+expires so a stale record cannot match an unrelated transfer later. Bounce counters are exposed as
+`bounced_payouts`/`bounced_payout_atto` next to the refund ones.
+
+One limit is inherent to the hook: it carries the returned value but not the recipient, so when two
+watched payouts share an amount the contract cannot tell them apart. It reverses a settled record
+first (leaving one recorded as paid while its GEN is back in the contract is the corruption this
+exists to prevent) and the most recent record otherwise. Payouts of different amounts, which is the
+normal case across rounds, are always attributed exactly.
 
 Rules enforced by the contract:
 

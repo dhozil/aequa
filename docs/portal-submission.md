@@ -95,11 +95,11 @@ What changed for this review:
 - `confirm_payout` no longer settles from one balance reading. It records
   `payout_observed_at` and finalises only after `PAYOUT_SETTLE_SECONDS = 90`, so a temporary child
   transfer debit cannot be marked delivered on the first observation.
-- `__on_errored_message__` now also reverses payouts. `disburse` keeps a watch record
-  (`payout_watch_proposal`, `payout_watch_amount`, `payout_watch_at`), so a bounce reported after an
-  early confirmation returns `paid_atto` to `reserved_atto`, drops `total_paid`, clears
-  `paid_atto`, restores `status = payout_pending`/`payout_state = owed`, and allows a retry on the
-  same reservation. The record is cleared on reversal and expires after `PAYOUT_REVERSAL_WINDOW`.
+- `__on_errored_message__` now also reverses payouts. `disburse` adds a watch record to
+  `payout_watch_atto`/`payout_watch_at` (pruned, capped at 8), so a bounce reported after an early
+  confirmation returns `paid_atto` to `reserved_atto`, drops `total_paid`, clears `paid_atto`,
+  restores `status = payout_pending`/`payout_state = owed`, and allows a retry on the same
+  reservation. The record is removed on reversal and expires after `PAYOUT_REVERSAL_WINDOW`.
 - `disburse` refuses to start while `refund_in_flight > 0`, so a payout can never overlap a refund
   transfer that could still bounce; `claim_refund` already refused while a payout was in flight.
 - `get_stats` exposes `bounced_payouts` and `bounced_payout_atto`; `get_proposal` exposes
