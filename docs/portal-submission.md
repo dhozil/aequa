@@ -63,7 +63,7 @@ Press Evaluate on a proposal: within one to three minutes it shows criterion sco
 https://explorer-studio.genlayer.com/address/0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e
 ```
 
-Deployed from `main` (`6114e14`) on 30 October 2026, tx
+Deployed on 30 October 2026 from the contract source now at `main` (`107b586`), tx
 `0xd16e80965b68687c6dc3d74b23e5d21e6a84e88b795e0db160db407c428448fb`. Demo state at deploy:
 round `r0001` open with 5 GEN funded, budget 5 GEN, cap 2 GEN, threshold 0.
 

@@ -136,12 +136,13 @@ surplus  = max(0, balance - expected)
 ```
 
 Every payable entry point (`fund_round`, and the hook when it does fire) records its value, so a
-a surplus is normally a child transfer handing its value back. `reconcile_payout(proposal_id)` and
+surplus is normally a child transfer handing its value back. `reconcile_payout(proposal_id)` and
 `reconcile_refund(round_id)` use it to undo a settlement that was recorded before its transfer
 failed. They are restricted to the beneficiary — the applicant for a payout, and the funder whose
 claim is pending for a refund — because a plain GEN transfer to this contract raises the same balance
-and would otherwise let anyone forge a bounce (verified by the on-chain donation probe in
-`information_needed.md`): the grant returns to `payout_pending`/`owed` on the same
+and would otherwise let anyone forge a bounce (verified on-chain by
+`scripts/donation_probe.py`, tx `0xf0345517a1d9e97fd06275bdfc98e17bb99770a27941487db7d7f7146cc11246`,
+raw output in `docs/donation-probe.json`, written up in `information_needed.md`): the grant returns to `payout_pending`/`owed` on the same
 reservation, or the refund ledger credit is taken back and the funder can claim again. Both refuse
 when no returned value covers the amount, so a real delivery can never be reversed by calling them.
 They only handle *settled* transfers; while a transfer is still in flight the money has not been

@@ -9,9 +9,9 @@ is tested, and where to verify it on-chain.
 | Network | GenLayer StudioNet (`https://studio.genlayer.com/api`, chain id `61999`) |
 | Contract under review | `0xBcbB12be1D8A9ccf8eDaD5F883668ecbb8B5A75e` |
 | Repository | https://github.com/dhozil/aequa |
-| Source | [`contracts/aequa_grants.py`](contracts/aequa_grants.py) |
+| Source | [`contracts/aequa_grants.py`](contracts/aequa_grants.py) on `main` (`107b586`) — the file the deployed bytecode was built from |
 | Runner | `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6` (pinned) |
-| Commits with the fix | `cfd79de`, `b434cec`, `6114e14`, `f48361a` |
+| Commits with the fix | `cfd79de`, `b434cec`, `6114e14`, `f48361a`, `ae65e6a`, `107b586` |
 
 ## 1. The review request
 
@@ -178,7 +178,7 @@ Raw output: [`docs/bounce-drill.json`](docs/bounce-drill.json).
 | `disburse` after the refund | `0x295c82b98088e4df9bb52fd7232e2e668a3b1a24eb9d4eeb2e2f0d481c853909` | `payout_pending` / `sent` |
 | `confirm_payout` (first) | `0x6518d5313ce2b98020353b205b60f6bca79cc291906938c963d602c6ba78d0f8` | status still `payout_pending`, `payout_observed_at` set, `payout_confirm_after` +90s |
 | `confirm_payout` (settle) | `0xcac450bcaca0ee6dee11e87a98bfd8a41b68813e5458011db98c85103def06ba` | `paid`, `paid_atto = 0.5 GEN` |
-| `reconcile_payout` with a forged surplus | `0xe73dd36a90044626b9b72eeaf4896114ea50dfbf3c574fa59a4719b93e1c8214` | refused: `[EXPECTED] no returned transfer covers this payout` |
+| `reconcile_payout` after a real delivery | `0xe73dd36a90044626b9b72eeaf4896114ea50dfbf3c574fa59a4719b93e1c8214` | refused: `[EXPECTED] no returned transfer covers this payout` |
 
 What this proves on-chain:
 
@@ -190,12 +190,18 @@ What this proves on-chain:
    runner credits plain value transfers to contracts. A bounce therefore cannot be forced from
    outside, and the reversal branch (settled → bounce → `reconcile_payout`) remains covered by the
    direct tests rather than by a live transaction.
-4. The drill also exposed a flaw the first design missed: **a plain 0.001 GEN donation created
-   `returned_surplus_atto = 0.001`**, because nothing in the contract can intercept a bare transfer
-   on this runner (it has no `__receive__`). `reconcile_payout` only refused because the donation was
-   smaller than the payout; a donation of the full amount would have been able to reverse a real
-   payment. That is why reconciliation is now restricted to the beneficiary and covered by
-   `test_a_donation_cannot_force_a_settled_payout_back` and its refund twin.
+4. The drill also exposed a flaw the first design missed: **a bare GEN transfer counts as returned
+   value**. Nothing in the contract can intercept a plain transfer on this runner (it has no
+   `__receive__`), so `balance - accounted` rises exactly like a bounced child transfer.
+   `scripts/donation_probe.py` sends 0.001 GEN with no calldata,
+   tx `0xf0345517a1d9e97fd06275bdfc98e17bb99770a27941487db7d7f7146cc11246` (FINALIZED), and
+   `returned_surplus_atto` moves from 0.004 to 0.005 GEN — the same ledger field `reconcile_payout`
+   reads (the script is repeatable: each run adds its own amount); raw output in [`docs/donation-probe.json`](docs/donation-probe.json). On this pre-fix
+   instance `reconcile_payout` refused only because 0.001 GEN did not cover the 0.5 GEN payout:
+   a donation of the full amount would have forced a real payment back to `owed`. That is why
+   reconciliation is now restricted to
+   the beneficiary and covered by `test_a_donation_cannot_force_a_settled_payout_back` and its
+   refund twin.
 
 The drill instance was deployed before that restriction, so it still runs the earlier permissionless
 version; the main deployment below includes the fix.
@@ -282,5 +288,6 @@ that actually happened cannot be reversed, and a third party cannot force a reve
 | `scripts/bounce_drill.py` | on-chain drill runner used for section 5b |
 | `tests/integration/bounce_sink.py` | recipient that rejects transfers, used as the drill applicant |
 | `docs/bounce-drill.json` | raw receipts and state transitions from the drill |
+| `scripts/donation_probe.py` | sends a bare transfer and shows the surplus it forges (`docs/donation-probe.json`) |
 | `README.md` | architecture, payout lifecycle, deployment |
 | `frontend/components/proposals/proposal-actions.tsx` | UI for the two-step confirmation |
