@@ -228,13 +228,17 @@ def test_round_from_funding_to_disbursement():
     assert tx_execution_failed(receipt), receipt
 
     confirmed = False
-    for _ in range(12):
+    for attempt in range(16):
         result = contract.confirm_payout(args=[proposal_id]).transact()
         assert tx_execution_succeeded(result), result
-        if contract.get_proposal(args=[proposal_id]).call()["status"] == "paid":
+        probe = contract.get_proposal(args=[proposal_id]).call()
+        if probe["status"] == "paid":
             confirmed = True
             break
-        time.sleep(5)
+        if attempt == 0:
+            # The first call only observes the balance drop.
+            assert probe["payout_observed_at"] > 0
+        time.sleep(10)
     assert confirmed, "confirm_payout did not reach paid after disburse"
 
     paid = contract.get_proposal(args=[proposal_id]).call()

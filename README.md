@@ -45,9 +45,10 @@ already counted them as returned. That is what the two-phase refund plus the bou
    the same evaluation independently, and all of them must reach the same decision. If they
    disagree, the transaction ends `UNDETERMINED` and no state changes.
 5. The **owner or applicant** calls `disburse` for an approved proposal. The transfer leaves as a
-   child transaction, so the proposal moves to `payout_pending`; `confirm_payout` marks it paid once
-   the contract's own balance shows the funds actually left. A bounced transfer returns its value
-   and can be retried after a one-hour grace period.
+   child transaction, so the proposal moves to `payout_pending`; `confirm_payout` marks it paid only
+   after the contract's own balance has shown the funds gone for the full settle window. A bounced
+   transfer returns its value, is reversed even if it had already been confirmed, and can be retried
+   after a one-hour grace period. Payouts wait for any unresolved refund transfer.
 6. Once the round is closed and every proposal has a decision, each **funder** can call
    `claim_refund` to take back its own pro-rata share of the money that was never allocated. The
    claim emits a child transfer and stays pending until `confirm_refund` observes that the money
@@ -64,10 +65,15 @@ contract cannot support, and it is exactly how a failed transfer ends up counted
 approved --disburse--> payout_pending (payout_state = sent)
                           |            |
         confirm_payout ---+            +--- recover_payout (after 1h, transfer bounced)
-        (balance dropped)                   |
-             |                              +--> payout_state = owed  -> disburse retries
-             v                              |
-           paid                             +--> 3rd failure: reservation released, status = payout_failed
+        1st call: observation               |
+        +90s: balance still down            +--> payout_state = owed  -> disburse retries
+             |                              |
+             v                              +--> 3rd failure: reservation released,
+           paid                                  status = payout_failed
+             |
+             +<-- __on_errored_message__ (bounce reported later:
+                  paid_atto -> reserved_atto, total_paid reversed,
+                  status = payout_pending, payout_state = owed)
 ```
 
 Refunds mirror it exactly:
@@ -87,9 +93,9 @@ claimable --claim_refund--> pending (refund_state = sent, snapshot of balance)
 ```
 
 A bouncing child transfer debits its value for a moment before returning it, so one low balance
-reading is not proof of delivery. `confirm_refund` first records the observation, then only settles
-the claim if the balance is still down `REFUND_SETTLE_SECONDS = 90` later; a reading that goes back
-up clears the observation.
+reading is not proof of delivery. `confirm_payout` and `confirm_refund` both first record the
+observation, then only settle once the balance has stayed down for `PAYOUT_SETTLE_SECONDS = 90` /
+`REFUND_SETTLE_SECONDS = 90`; a reading that goes back up clears the observation.
 
 The settle window is only a smoothing device. The authoritative signal is the GenVM hook
 `__on_errored_message__`, which the network calls on the sending contract when an emitted transfer
@@ -99,10 +105,23 @@ credit back (`claimed_refunds`, `refunded_atto`, `total_refunded`). A refund the
 recorded as returned while its GEN sits in the contract, no matter how long the bounce takes.
 `recover_refund` remains as the manual fallback for the case where no hook report arrives.
 
+The same hook also owns settled payouts. `confirm_payout` keeps a watch record
+(`payout_watch_proposal`, `payout_watch_amount`, `payout_watch_at`) after it records a delivery, so a
+bounce reported up to `PAYOUT_REVERSAL_WINDOW = 7200` seconds later reverses the settlement itself:
+`paid_atto` goes back to `reserved_atto`, `total_paid` drops, `paid_atto` on the proposal returns to
+zero, the status goes back to `payout_pending`/`owed`, and the payout can be sent again on the same
+reservation. The watch record is cleared on reversal, so one bounce can never reverse two
+settlements, and it expires so a stale record cannot match an unrelated transfer later. Bounce
+counters are exposed as `bounced_payouts`/`bounced_payout_atto` next to the refund ones.
+
 Rules enforced by the contract:
 
 - **One un-reconciled payout at a time** (`payout_in_flight`). With two transfers in flight, a
   balance reading cannot be attributed to either one, so neither could be confirmed or recovered.
+- **A payout cannot start while a refund transfer is unresolved** (`refund_in_flight > 0`). The
+  refund could still bounce and hand its value back, and two outbound transfers competing for one
+  balance reading cannot be reconciled. Refunds are blocked in the other direction too, so the two
+  legs are strictly sequential: reconcile one, then the other.
 - **`confirm_payout` is permissionless** and only reduces what the contract owes. It is arithmetic
   against a snapshot the contract wrote before the emit (`payout_balance_at_emit`,
   `payout_received_at_emit`), net of funding that arrived afterwards — not a claim by the caller.

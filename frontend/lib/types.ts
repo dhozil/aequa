@@ -79,6 +79,11 @@ export type Proposal = {
   sources: EvidenceSource[];
   payoutState: string;
   payoutSentAt: number;
+  /** When delivery was first observed; 0 until then. */
+  payoutObservedAt: number;
+  /** Unix time from which a second confirmation can settle the grant. */
+  payoutConfirmAfter: number;
+  payoutSettleSeconds: number;
   payoutAttempts: number;
 };
 
@@ -275,6 +280,9 @@ export function normalizeProposal(raw: unknown): Proposal {
     })),
     payoutState: toText(item.payout_state),
     payoutSentAt: toNumber(item.payout_sent_at),
+    payoutObservedAt: toNumber(item.payout_observed_at),
+    payoutConfirmAfter: toNumber(item.payout_confirm_after),
+    payoutSettleSeconds: toNumber(item.payout_settle_seconds),
     payoutAttempts: toNumber(item.payout_attempts),
   };
 }

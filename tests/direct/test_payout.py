@@ -69,7 +69,23 @@ def test_confirm_payout_after_the_balance_drops(
     _credit(direct_vm, 1000)
     _disburse(grants, direct_vm, proposal_id, direct_alice)
 
+    # A bouncing child transfer debits its value first, so one low reading is
+    # only an observation: the ledger must not move yet.
     _credit(direct_vm, 900)  # the child transfer delivered 100
+    assert grants.confirm_payout(proposal_id) == "sent"
+    observed = grants.get_proposal(proposal_id)
+    assert observed["status"] == "payout_pending"
+    assert observed["paid_atto"] == "0"
+    assert observed["payout_observed_at"] > 0
+    assert observed["payout_confirm_after"] == (
+        observed["payout_observed_at"] + observed["payout_settle_seconds"]
+    )
+
+    # Still inside the window: nothing is recorded.
+    assert grants.confirm_payout(proposal_id) == "sent"
+    assert grants.get_proposal(proposal_id)["status"] == "payout_pending"
+
+    direct_vm.warp("2026-01-01T00:05:00Z")
     assert grants.confirm_payout(proposal_id) == "delivered"
 
     data = grants.get_proposal(proposal_id)
@@ -104,14 +120,14 @@ def test_confirm_is_a_noop_while_the_transfer_is_unresolved(
 
 
 def test_confirm_is_idempotent(
-    funded_round, grants, submit, direct_vm, direct_alice
+    funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
 ):
     proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
     _credit(direct_vm, 1000)
     _disburse(grants, direct_vm, proposal_id, direct_alice)
-    _credit(direct_vm, 900)
 
-    assert grants.confirm_payout(proposal_id) == "delivered"
+    deliver_payout(proposal_id, held=1000, amount=100)
+
     assert grants.confirm_payout(proposal_id) == "delivered"
     assert grants.get_stats()["total_paid_atto"] == "100"
 
@@ -210,6 +226,8 @@ def test_recover_returns_a_bounced_payout_for_retry(
     _disburse(grants, direct_vm, proposal_id, direct_alice)
     assert grants.get_proposal(proposal_id)["payout_attempts"] == 2
     _credit(direct_vm, 900)
+    assert grants.confirm_payout(proposal_id) == "sent"
+    direct_vm.warp("2026-01-01T01:05:00Z")
     assert grants.confirm_payout(proposal_id) == "delivered"
     assert grants.get_proposal(proposal_id)["status"] == "paid"
 
@@ -265,7 +283,7 @@ def test_repeated_failures_release_the_reservation(
 
 
 def test_payouts_still_work_while_paused(
-    funded_round, grants, submit, direct_vm, direct_alice, direct_owner
+    funded_round, grants, submit, direct_vm, direct_alice, direct_owner, deliver_payout
 ):
     """Pausing stops new work, but never traps an approved payout."""
     proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
@@ -274,8 +292,7 @@ def test_payouts_still_work_while_paused(
     grants.set_paused(True)
 
     _disburse(grants, direct_vm, proposal_id, direct_alice)
-    _credit(direct_vm, 900)
-    assert grants.confirm_payout(proposal_id) == "delivered"
+    deliver_payout(proposal_id, held=1000, amount=100)
     assert grants.get_proposal(proposal_id)["status"] == "paid"
 
 
@@ -293,14 +310,115 @@ def test_refund_blocked_while_a_payout_is_unreconciled(
         grants.claim_refund(funded_round)
 
 
-def test_refund_after_payout_keeps_committed_funds(
-    funded_round, grants, submit, direct_vm, direct_alice, direct_owner, direct_bob
+def test_a_settle_observation_is_forgotten_when_the_value_returns(
+    funded_round, grants, submit, direct_vm, direct_alice
+):
+    """A debit that turns out to be temporary must not survive as an observation."""
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+
+    _credit(direct_vm, 900)  # looks delivered
+    assert grants.confirm_payout(proposal_id) == "sent"
+    assert grants.get_proposal(proposal_id)["payout_observed_at"] > 0
+
+    _credit(direct_vm, 1000)  # the value came back
+    assert grants.confirm_payout(proposal_id) == "sent"
+    data = grants.get_proposal(proposal_id)
+    assert data["payout_observed_at"] == 0
+    assert data["status"] == "payout_pending"
+    assert data["paid_atto"] == "0"
+    assert grants.get_stats()["payout_in_flight"] == 1
+
+
+def test_an_early_confirmation_is_reversed_when_the_transfer_bounces(
+    funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
+):
+    """Confirm first, learn about the bounce later: the settlement must not stand."""
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    deliver_payout(proposal_id, held=1000, amount=100)
+
+    assert grants.get_proposal(proposal_id)["status"] == "paid"
+    assert grants.get_round(funded_round)["paid_atto"] == "100"
+
+    # The network reports that the child transfer failed and its value came back.
+    _credit(direct_vm, 1000)
+    direct_vm.value = 100
+    grants.__on_errored_message__()
+    direct_vm.value = 0
+
+    data = grants.get_proposal(proposal_id)
+    assert data["status"] == "payout_pending"
+    assert data["payout_state"] == "owed"
+    assert data["paid_atto"] == "0"
+
+    round_data = grants.get_round(funded_round)
+    assert round_data["paid_atto"] == "0"
+    assert round_data["reserved_atto"] == "100"
+    assert round_data["available_atto"] == "900"
+
+    stats = grants.get_stats()
+    assert stats["total_paid_atto"] == "0"
+    assert stats["total_reserved_atto"] == "100"
+    assert stats["payout_in_flight"] == 0
+    assert stats["bounced_payouts"] == 1
+    assert stats["bounced_payout_atto"] == "100"
+
+    # The grant is payable again on the same reservation.
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    assert grants.get_proposal(proposal_id)["payout_attempts"] == 2
+
+
+def test_a_bounce_of_an_unrelated_payout_value_is_ignored(
+    funded_round, grants, submit, direct_vm, direct_alice, deliver_payout
 ):
     proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
     _credit(direct_vm, 1000)
     _disburse(grants, direct_vm, proposal_id, direct_alice)
-    _credit(direct_vm, 900)
-    grants.confirm_payout(proposal_id)
+    deliver_payout(proposal_id, held=1000, amount=100)
+
+    direct_vm.value = 7
+    grants.__on_errored_message__()
+    direct_vm.value = 0
+
+    assert grants.get_proposal(proposal_id)["status"] == "paid"
+    assert grants.get_stats()["bounced_payouts"] == 0
+
+
+def test_payout_cannot_start_while_a_refund_is_unresolved(
+    funded_round, grants, submit, claim_refund, deliver_refund, direct_vm,
+    direct_alice, direct_owner, direct_bob,
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+
+    direct_vm.sender = direct_owner
+    grants.close_round(funded_round)
+    claim_refund(funded_round, direct_bob, held=1000)
+
+    direct_vm.sender = direct_alice
+    with direct_vm.expect_revert("refund is awaiting reconciliation"):
+        grants.disburse(proposal_id)
+    assert grants.get_proposal(proposal_id)["status"] == "approved"
+
+    # Once the refund is reconciled the same payout is allowed, so the block is
+    # a sequencing rule rather than a dead end.
+    deliver_refund(funded_round, held=1000, amount=900)
+    assert grants.get_stats()["refund_in_flight"] == 0
+
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    assert grants.get_proposal(proposal_id)["status"] == "payout_pending"
+
+
+def test_refund_after_payout_keeps_committed_funds(
+    funded_round, grants, submit, direct_vm, direct_alice, direct_owner, direct_bob,
+    deliver_payout,
+):
+    proposal_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
+    _credit(direct_vm, 1000)
+    _disburse(grants, direct_vm, proposal_id, direct_alice)
+    deliver_payout(proposal_id, held=1000, amount=100, at="2026-01-01T00:02:00Z")
 
     direct_vm.sender = direct_owner
     grants.close_round(funded_round)
@@ -308,7 +426,7 @@ def test_refund_after_payout_keeps_committed_funds(
     grants.claim_refund(funded_round)
     _credit(direct_vm, 0)  # the 900 atto refund left the contract
     assert grants.confirm_refund(funded_round) == "sent"  # observation
-    direct_vm.warp("2026-01-01T00:05:00Z")
+    direct_vm.warp("2026-01-01T00:10:00Z")
     assert grants.confirm_refund(funded_round) == "delivered"
 
     round_data = grants.get_round(funded_round)
@@ -321,14 +439,14 @@ def test_refund_after_payout_keeps_committed_funds(
 
 
 def test_fund_conservation_across_payouts(
-    funded_round, grants, submit, direct_vm, direct_alice, direct_bob
+    funded_round, grants, submit, direct_vm, direct_alice, direct_bob, deliver_payout
 ):
     """funded == reserved + paid + refunded + available, before and after settlement."""
     paid_id = _approved(funded_round, grants, submit, direct_vm, direct_alice)
     _credit(direct_vm, 1000)
     _disburse(grants, direct_vm, paid_id, direct_alice)
-    _credit(direct_vm, 900)
-    grants.confirm_payout(paid_id)
+    deliver_payout(paid_id, held=1000, amount=100)
+    assert grants.get_proposal(paid_id)["status"] == "paid"
 
     # A second proposal is approved but deliberately left unpaid.
     pending_id = submit(funded_round, direct_bob, requested=100)

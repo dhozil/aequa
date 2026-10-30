@@ -152,3 +152,20 @@ def funded_round(grants, make_round, direct_vm, direct_bob, direct_owner):
 
     _fund()
     return round_id
+
+
+@pytest.fixture
+def deliver_payout(grants, direct_vm):
+    """Simulate the child transfer landing, then reconcile it.
+
+    Delivery is observed first and only finalised after the settle window, so
+    the helper warps past it.
+    """
+
+    def _deliver(proposal_id, held, amount, at="2026-01-01T00:05:00Z"):
+        direct_vm.deal(direct_vm._contract_address, held - amount)
+        assert grants.confirm_payout(proposal_id) == "sent"
+        direct_vm.warp(at)
+        assert grants.confirm_payout(proposal_id) == "delivered"
+
+    return _deliver

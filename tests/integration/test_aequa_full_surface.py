@@ -633,16 +633,21 @@ def test_04_evaluation_payout_and_refund(env):
             "recover_payout before the grace period",
         )
 
+        # The first confirmation only records the observation: the ledger moves
+        # once the balance has stayed down for the settle window.
         paid = False
-        for attempt in range(3):
+        for attempt in range(16):
             _tx(
                 env.outsider.confirm_payout(args=[proposal_id]),
                 f"confirm_payout (permissionless, attempt {attempt + 1})",
             )
-            if contract.get_proposal(args=[proposal_id]).call()["status"] == "paid":
+            probe = contract.get_proposal(args=[proposal_id]).call()
+            if probe["status"] == "paid":
                 paid = True
                 break
-            time.sleep(5)
+            if attempt == 0:
+                assert probe["payout_observed_at"] > 0
+            time.sleep(10)
         assert paid, "confirm_payout never observed the transfer"
 
         settled = contract.get_proposal(args=[proposal_id]).call()

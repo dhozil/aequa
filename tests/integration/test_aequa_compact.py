@@ -228,7 +228,7 @@ def test_compact_surface(env):
     _ok(env.applicant.disburse(args=[proposal_id]), "disburse")
 
     paid = False
-    for attempt in range(3):
+    for attempt in range(7):
         result = _ok(
             contract.confirm_payout(args=[proposal_id]),
             f"confirm_payout (attempt {attempt + 1})",

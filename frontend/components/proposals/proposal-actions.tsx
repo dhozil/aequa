@@ -69,7 +69,7 @@ const COPY: Record<
   disburse: {
     title: "Send the payout?",
     description:
-      "The transfer leaves as a separate transaction. The proposal stays in payout pending until the contract can observe that the funds arrived, so a failed transfer can be retried instead of being recorded as paid.",
+      "The transfer leaves as a separate transaction. The proposal stays in payout pending until the contract can observe that the funds arrived, so a failed transfer can be retried instead of being recorded as paid. A refund transfer that is still unresolved must be reconciled first.",
     confirm: "Send payout",
     label: "Sending the payout",
     successTitle: "Payout submitted",
@@ -80,11 +80,12 @@ const COPY: Record<
   confirm: {
     title: "Confirm the payout?",
     description:
-      "This is permissionless and only reduces what the contract owes. It succeeds when the contract's balance shows the transfer has actually left.",
+      "This is permissionless and only reduces what the contract owes. The first call records the balance drop; the grant is marked paid on a later call, once the debit has held for the settle window. That wait is what stops a bouncing transfer from being recorded as delivered.",
     confirm: "Check and confirm",
     label: "Confirming the payout",
-    successTitle: "Payout confirmed",
-    successDescription: "Delivery was observed on-chain and the grant is now paid.",
+    successTitle: "Delivery checked",
+    successDescription:
+      "The contract recorded what it observed. Run this again after the settle window to mark the grant paid.",
     pendingHint: "Checking whether the transfer has been delivered.",
   },
   recover: {
@@ -126,6 +127,18 @@ export function ProposalActions({
   const payoutSent = payoutPending && proposal.payoutState === "sent";
   const payoutOwed = payoutPending && proposal.payoutState === "owed";
   const attemptsLeft = MAX_PAYOUT_ATTEMPTS - proposal.payoutAttempts;
+  // The contract observes a balance drop first and settles only after the
+  // settle window, so the panel has to show that two clicks may be needed.
+  const payoutObserved = payoutSent && proposal.payoutObservedAt > 0;
+  const [now, setNow] = React.useState(() => Math.floor(Date.now() / 1000));
+  React.useEffect(() => {
+    if (!payoutObserved) return;
+    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [payoutObserved]);
+  const settleIn = payoutObserved
+    ? Math.max(0, proposal.payoutConfirmAfter - now)
+    : 0;
 
   const invalidate = [
     queryKeys.stats,
@@ -167,7 +180,11 @@ export function ProposalActions({
           if (current === "disburse") {
             return fresh.status === "payout_pending" || fresh.status === "paid";
           }
-          if (current === "confirm") return fresh.status === "paid";
+          // A first confirmation only records the observation; the grant is
+          // paid on a later call, after the settle window.
+          if (current === "confirm") {
+            return fresh.status === "paid" || fresh.payoutObservedAt > 0;
+          }
           return fresh.payoutState !== "sent";
         } catch {
           // A failed readback is inconclusive, not a failed transaction.
@@ -235,6 +252,15 @@ export function ProposalActions({
               {proposal.payoutAttempts} of {MAX_PAYOUT_ATTEMPTS}. It is not marked paid until
               the contract observes the delivery.
             </p>
+            {payoutObserved && (
+              <p className="text-[11px] leading-relaxed text-brass">
+                Delivery observed. The contract waits {proposal.payoutSettleSeconds}s before
+                settling, so a transfer that bounces cannot be recorded as paid.{" "}
+                {settleIn > 0
+                  ? `Confirm again in ${settleIn}s.`
+                  : "You can confirm it now."}
+              </p>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 size="sm"
